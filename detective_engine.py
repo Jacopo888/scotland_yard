@@ -31,14 +31,15 @@ class Detective_Engine():
         return 
     
     def mrx_is_spotted(self, mrx_pos):
+        print(mrx_pos)
         self.belief_state[:]=0
-        self.belief_state[int(mrx_pos)]=1
+        self.belief_state[int(mrx_pos)-1]=1
         return
 
 
 
     def gen_adjacent_matrix(self):
-        all_nodes = sorted(self.board.board.nodes())
+        all_nodes = self.board.board.nodes()
         # Taxi
         taxi_edges = [(u, v) for u, v, d in self.board.board.edges(data=True) if d['type'] == 'taxi']
         taxi_graph = nx.Graph()
@@ -72,12 +73,8 @@ class Detective_Engine():
         # mask di lunghezza del belief vector: 1 = libero, 0 = occupato da detective
         mask = np.ones_like(b_old, dtype=float)
         for pos in self.detectives_pos:
-            try:
-                idx = int(pos)
-                if 0 <= idx < len(mask):
-                    mask[idx] = 0.0
-            except:
-                continue
+                idx = int(pos)-1
+                mask[idx] = 0.0
 
         b_new = b_old * mask
         s = b_new.sum()

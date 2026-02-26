@@ -11,6 +11,9 @@ belief_state=BeliefStateVisualizer(board)
 board.update_detectives_pos(game.detectives_pos)
 board.update_mrx_position(game.mrx_pos)
 
+belief_state.show(detective_engine.belief_state)
+
+
 while True:
     game.detectives_turn()
     board.update_detectives_pos(game.detectives_pos)
@@ -22,6 +25,6 @@ while True:
     board.update_mrx_position(game.mrx_pos)
     if game.check_victory():
         break
-    if game.turn%5==0:
+    if game.turn%2==0:
         detective_engine.mrx_is_spotted(game.mrx_pos)
         belief_state.show(detective_engine.belief_state)

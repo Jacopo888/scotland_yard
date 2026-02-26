@@ -4,14 +4,13 @@ from random import randint
 class Game():
     def __init__(self, game_board):
         self.board=game_board
-        self.mrx_pos=str(randint(1,200))
+        self.mrx_pos=str(46)
         self.detectives_pos=[str(randint(1,200)) for detective in range(NUM_DETECTIVES)]
         self.turn=0
         self.mrx_tickets={
             "taxi":3,
             "bus":4,
             "underground":5
-
         }
         self.detective_tickets={f"detective_{i}":{
             "taxi":3,
@@ -30,9 +29,8 @@ class Game():
                 return self.x_turn()
         else:
             self.mrx_pos=new_pos
-            self.turn +=1
             ticket = next((k for k, v in avaiable_moves.items() if new_pos in v ), None)
-            print(avaiable_moves.items())
+            self.turn += 1
             return str(ticket)
     
     def detectives_turn(self):
