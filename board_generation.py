@@ -4,17 +4,14 @@ import matplotlib.pyplot as plt
 stations=list(range(1,200))
 stations=[str(i) for i in stations]
 
-
-def add_road(board,station1, station2, veichle):
-    board.add_edge(station1,station2, type=veichle)
-    return
-
 class Board():
     def __init__(self, ):
         self.board = nx.MultiGraph()
+
         with open("connections.txt", "r") as file:
             connections = [line.strip().split(" ") for line in file]
             connections = [(c[0], c[1], {"type": c[2]}) for c in connections]
+        
         self.board.add_nodes_from(stations)
         self.board.add_edges_from(connections)
         self.type_to_color = {
@@ -24,10 +21,10 @@ class Board():
         }
         self.detectives_pos = []
         self.mrx_pos = None
-        self.pos = nx.spring_layout(self.board, seed=42)  # fixed layout for consistency
-        self.fig = plt.figure(figsize=(10, 8))
-        self.fig.canvas.manager.set_window_title("Scotland Yard Board")
-        self._draw_board()
+        #self.pos = nx.spring_layout(self.board, seed=42)  # fixed layout for consistency
+        #self.fig = plt.figure(figsize=(10, 8))
+        #self.fig.canvas.manager.set_window_title("Scotland Yard Board")
+        #self._draw_board()
 
     def _draw_board(self):
         plt.figure(self.fig.number)

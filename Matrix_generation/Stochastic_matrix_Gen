@@ -1,0 +1,46 @@
+from board_generation import Board
+import networkx as nx
+import numpy as np
+
+def stochastic_matrix(A):
+    A = np.array(A, dtype=float)
+    row_sums = A.sum(axis=1)
+    inv_row_sums = np.divide(1, row_sums, out=np.zeros_like(row_sums), where=row_sums != 0)
+    T = A * inv_row_sums[:, np.newaxis]
+    return T
+
+board=Board()    
+all_nodes = board.board.nodes()
+# Taxi
+taxi_edges = [(u, v) for u, v, d in board.board.edges(data=True) if d['type'] == 'taxi']
+taxi_graph = nx.Graph()
+taxi_graph.add_nodes_from(all_nodes)
+taxi_graph.add_edges_from(taxi_edges)
+taxi_matrix = nx.to_numpy_array(taxi_graph, nodelist=all_nodes)
+taxi_matrix = stochastic_matrix(taxi_matrix)
+np.save('taxi_matrix.npy', taxi_matrix)
+
+
+# Bus
+bus_edges = [(u, v) for u, v, d in board.board.edges(data=True) if d['type'] == 'bus']
+bus_graph = nx.Graph()
+bus_graph.add_nodes_from(all_nodes)
+bus_graph.add_edges_from(bus_edges)
+bus_matrix = nx.to_numpy_array(bus_graph, nodelist=all_nodes)
+bus_matrix = stochastic_matrix(bus_matrix)
+np.save('bus_matrix.npy', bus_matrix)
+
+
+# Underground
+underground_edges = [(u, v) for u, v, d in board.board.edges(data=True) if d['type'] == 'underground']
+underground_graph = nx.Graph()
+underground_graph.add_nodes_from(all_nodes)
+underground_graph.add_edges_from(underground_edges)
+underground_matrix = nx.to_numpy_array(underground_graph, nodelist=all_nodes)
+underground_matrix=stochastic_matrix(underground_matrix)
+np.save('underground_matrix.npy', underground_matrix)
+
+
+unknown_matrix=nx.to_numpy_array(board.board)
+unknown_matrix=stochastic_matrix(unknown_matrix)
+np.save('unknown_matrix.npy', unknown_matrix)

@@ -1,3 +1,6 @@
+108 115 water
+115 157 water
+157 194 water
 1 46 underground
 13 46 underground
 13 67 underground

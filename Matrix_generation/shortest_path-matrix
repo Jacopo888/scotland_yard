@@ -1,0 +1,14 @@
+import networkx as nx
+import numpy as np
+from board_generation import Board
+board=Board()
+distanze_dict = dict(nx.all_pairs_shortest_path_length(board.board))
+
+
+
+n_nodi = 200 # Scotland Yard ha nodi da 1 a 199
+matrice = np.zeros((n_nodi, n_nodi), dtype=int)
+for i in range(1, n_nodi):
+    for j in range(1, n_nodi):
+        matrice[i-1][j-1] = distanze_dict[str(i)].get(str(j), 999) # 999 se non raggiungibile
+np.save('distanze_scotland_yard.npy', matrice)
