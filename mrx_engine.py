@@ -1,5 +1,6 @@
 from copy import deepcopy
 from detective_engine import Detective_Engine
+NUM_SIMULATIONS=25
 class Mrx_Engine():
     def __init__(self, game, detective_engine):
         self.game_status=game
@@ -24,7 +25,7 @@ class Mrx_Engine():
         #From this position, I simulate 100 games and evaluate the score
         iterations=0
         score=0
-        while iterations<25:
+        while iterations<NUM_SIMULATIONS:
             iterations +=1
             score += self.play_one_game(game_on_the_next_status, detective_engine_on_the_next_status)
         #print(f"nodo {starting_pos} ha punteggio {score}")

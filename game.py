@@ -5,7 +5,7 @@ from random import choice
 import random
 from networkx import shortest_path
 
-SHORTEST_PATH_MATRIX=np.load("./Matrix_generation/distanze_scotland_yard.npy")
+SHORTEST_PATH_TENSOR=np.load("./Matrix_generation/distanze_scotland_yard_3d.npy")
 STARTING_POS=['13', '26', '29', '34', '50', '53', '91', '94', '103', '112', '117', '132', '138', '141', '155', '174', '197', '198']
 with open("./Matrix_generation/board_graph.pkl", "rb") as f:
     BOARD_GRAPH = pickle.load(f)
@@ -24,6 +24,15 @@ def random_key_value(dictionary):
     
     return value
 
+def ticket_bitmask(tickets):
+    idx = 0
+    if tickets.get("taxi", 0) > 0:
+        idx |= 1
+    if tickets.get("bus", 0) > 0:
+        idx |= 2
+    if tickets.get("underground", 0) > 0:
+        idx |= 4
+    return idx
 
 class Game():
     def __init__(self):
@@ -37,7 +46,7 @@ class Game():
         self.mrx_moves=[self.mrx_pos]
 
         self.detectives_pos=random.sample(self.starting_pos, NUM_DETECTIVES)
-        self.detectives_moves=[self.detectives_pos]
+        self.detectives_moves=[self.detectives_pos[:]]
 
         self.turn=0
         self.mrx_tickets={
@@ -137,8 +146,10 @@ class Game():
             node for node in self.board.neighbors(self.detectives_pos[id])
             if node not in nodi_occupati and self.has_tickets(id, node)
         ] 
+        target=np.argmax(belief_state)
         try:
-            candidates = [(node, SHORTEST_PATH_MATRIX[int(node)-1][np.argmax(belief_state)]) for node in nodi_accessibili]
+            matrix_idx = ticket_bitmask(self.detective_tickets[id])
+            candidates = [(node, SHORTEST_PATH_TENSOR[matrix_idx][int(node)-1][target]) for node in nodi_accessibili]
             node, distance = min(candidates, key=lambda x: x[1]) 
             
             #nodi_validi = [n for n in self.board.board.nodes() if n not in nodi_da_evitare]
@@ -156,7 +167,21 @@ class Game():
             #print(f"detective {id} is blocked")
             #print(f"{self.detectives_pos}")
             pass
-                    
+    
+    def __deepcopy__(self, memo): #
+        cls = self.__class__.__new__(self.__class__)
+        cls.num_detectives = self.num_detectives
+        cls.board = self.board  #  NO copy
+        cls.winner = self.winner
+        cls.mrx_pos = self.mrx_pos
+        cls.mrx_moves = self.mrx_moves[:]
+        cls.detectives_pos = self.detectives_pos[:]
+        cls.detectives_moves = [m[:] for m in self.detectives_moves]
+        cls.turn = self.turn
+        cls.starting_pos = self.starting_pos[:]
+        cls.mrx_tickets = self.mrx_tickets.copy()
+        cls.detective_tickets = [t.copy() for t in self.detective_tickets]
+        return cls
 
 
 
