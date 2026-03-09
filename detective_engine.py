@@ -1,12 +1,10 @@
 import numpy as np
-import networkx as nx
 
 class Detective_Engine():
-    def __init__(self, board, game):
-        self.detectives_pos=game.detectives_pos
-        self.board=board
-        self.belief_state=np.ones(199)*0.005
-        self.game=game
+    def __init__(self, detectives_pos, belief_state=np.ones(199)*0.005):
+        self.detectives_pos=detectives_pos
+        self.belief_state=belief_state
+        self.kalman_filter()
         self.taxi_matrix=np.load("./Matrix_generation/taxi_matrix.npy")
         self.bus_matrix=np.load("./Matrix_generation/bus_matrix.npy")
         self.underground_matrix=np.load("./Matrix_generation/underground_matrix.npy")
@@ -33,7 +31,7 @@ class Detective_Engine():
     
     def mrx_is_spotted(self, mrx_pos):
         self.belief_state[:]=0
-        self.belief_state[int(self.game.mrx_pos)-1]=1
+        self.belief_state[int(mrx_pos)-1]=1
         return
     
     def kalman_filter(self):        
@@ -42,5 +40,5 @@ class Detective_Engine():
         if s != 0:
             self.belief_state /= s
         else:
-            print(f"Somma zero: belief_state={self.belief_state}, detectives={self.detectives_pos}, mrx={self.game.mrx_pos}")
+            print(f"Somma zero: belief_state={self.belief_state}, detectives={self.detectives_pos}")
         return

@@ -1,79 +1,93 @@
+import tkinter as tk
 import networkx as nx
-import matplotlib.pyplot as plt
 
-stations=list(range(1,200))
-stations=[str(i) for i in stations]
 
-class Board():
-    def __init__(self, ):
+class Board:
+    def __init__(self, width=1200, height=900):
+        self.root = tk.Tk()
+        self.root.title("Scotland Yard Board")
+        self.canvas = tk.Canvas(self.root, width=width, height=height, bg="#1e1e1e")
+        self.canvas.pack()
+        self.width = width
+        self.height = height
+
+        # Carica il grafo
         self.board = nx.MultiGraph()
-
-        with open("connections.txt", "r") as file:
+        with open("./Matrix_generation/connections.txt", "r") as file:
             connections = [line.strip().split(" ") for line in file]
             connections = [(c[0], c[1], {"type": c[2]}) for c in connections]
-        
+        stations = [str(i) for i in range(1, 200)]
         self.board.add_nodes_from(stations)
         self.board.add_edges_from(connections)
+
+        # Layout fisso
+        pos = nx.spring_layout(self.board, seed=42)
+        margin = 50
+        self.pos = {
+            node: (
+                int(margin + (x + 1) / 2 * (width - 2 * margin)),
+                int(margin + (y + 1) / 2 * (height - 2 * margin)),
+            )
+            for node, (x, y) in pos.items()
+        }
+
         self.type_to_color = {
-            "taxi": "yellow",
-            "bus": "blue",
-            "underground": "red"
+            "taxi": "#ffff00",
+            "bus": "#0064ff",
+            "underground": "#ff0000",
         }
         self.detectives_pos = []
         self.mrx_pos = None
-        #self.pos = nx.spring_layout(self.board, seed=42)  # fixed layout for consistency
-        #self.fig = plt.figure(figsize=(10, 8))
-        #self.fig.canvas.manager.set_window_title("Scotland Yard Board")
-        #self._draw_board()
 
-    def _draw_board(self):
-        plt.figure(self.fig.number)
-        plt.clf()
-        edge_colors = [
-            self.type_to_color.get(data["type"], "black")
-            for _, _, data in self.board.edges(data=True)
-        ]
-        # Draw all nodes as gray by default
-        nx.draw(
-            self.board,
-            pos=self.pos,
-            with_labels=True,
-            node_color="#222222",
-            font_color="white",
-            font_size=8,
-            font_weight='bold',
-            edge_color=edge_colors,
-            width=2.5,
-            node_size=300
-        )
-        # Draw detectives (blue, larger)
-        if self.detectives_pos:
-            for i, dpos in enumerate(self.detectives_pos):
-                if str(dpos) in self.pos:
-                    nx.draw_networkx_nodes(
-                        self.board, self.pos, nodelist=[str(dpos)], node_color='deepskyblue', node_size=500, label=f"Detective {i+1}")
-        # Draw Mr. X (red, largest)
-        if self.mrx_pos and str(self.mrx_pos) in self.pos:
-            nx.draw_networkx_nodes(
-                self.board, self.pos, nodelist=[str(self.mrx_pos)], node_color='crimson', node_size=600, label="Mr. X")
-        # Only show legend once
-        handles = [plt.Line2D([0], [0], marker='o', color='w', label='Detective', markerfacecolor='deepskyblue', markersize=10),
-                   plt.Line2D([0], [0], marker='o', color='w', label='Mr. X', markerfacecolor='crimson', markersize=12)]
-        plt.legend(handles=handles, loc='upper left')
-        plt.tight_layout()
-        plt.pause(0.1)
-        plt.draw()
+        # Disegna archi una sola volta (non cambiano)
+        self._draw_edges()
+        # Placeholder per nodi (verranno ridisegnati)
+        self._node_items = []
+        self._draw_nodes()
+        self.root.update()
+
+    def _draw_edges(self):
+        for u, v, data in self.board.edges(data=True):
+            color = self.type_to_color.get(data["type"], "#969696")
+            x1, y1 = self.pos[u]
+            x2, y2 = self.pos[v]
+            self.canvas.create_line(x1, y1, x2, y2, fill=color, width=1, tags="edge")
+
+    def _draw_nodes(self):
+        # Cancella i nodi precedenti
+        for item_id in self._node_items:
+            self.canvas.delete(item_id)
+        self._node_items.clear()
+
+        # Converti detectives_pos in un set di stringhe per confronto coerente
+        det_set = set(str(d) for d in self.detectives_pos)
+        mrx_str = str(self.mrx_pos) if self.mrx_pos is not None else None
+
+        for node, (x, y) in self.pos.items():
+            color = "#505050"
+            r = 10
+
+            if node in det_set:
+                color = "#00beff"
+                r = 16
+            if mrx_str is not None and node == mrx_str:
+                color = "#dc143c"
+                r = 18
+
+            oval = self.canvas.create_oval(x - r, y - r, x + r, y + r, fill=color, outline="", tags="node")
+            text = self.canvas.create_text(x, y, text=node, fill="white", font=("Arial", 7), tags="node")
+            self._node_items.append(oval)
+            self._node_items.append(text)
+
+        # Assicura che i nodi siano sopra gli archi
+        self.canvas.tag_raise("node", "edge")
 
     def update_detectives_pos(self, detectives_pos):
         self.detectives_pos = detectives_pos
-        self._draw_board()
+        self._draw_nodes()
+        self.root.update()
 
     def update_mrx_position(self, mrx_pos):
         self.mrx_pos = mrx_pos
-        self._draw_board()
-
-        
-        
-
-
-
+        self._draw_nodes()
+        self.root.update()

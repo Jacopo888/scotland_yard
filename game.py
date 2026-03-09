@@ -1,13 +1,16 @@
 NUM_DETECTIVES=3
-from board_generation import Board
-from random import randint
-from networkx import shortest_path, NetworkXNoPath
+import pickle
 import numpy as np
 from random import choice
 import random
+from networkx import shortest_path
 
 SHORTEST_PATH_MATRIX=np.load("./Matrix_generation/distanze_scotland_yard.npy")
 STARTING_POS=['13', '26', '29', '34', '50', '53', '91', '94', '103', '112', '117', '132', '138', '141', '155', '174', '197', '198']
+with open("./Matrix_generation/board_graph.pkl", "rb") as f:
+    BOARD_GRAPH = pickle.load(f)
+
+
 
 def random_key_value(dictionary):
     # Filtra le chiavi che hanno almeno un valore associato (non vuoto/None)
@@ -23,9 +26,10 @@ def random_key_value(dictionary):
 
 
 class Game():
-    def __init__(self, game_board):
+    def __init__(self):
+        self.num_detectives=NUM_DETECTIVES
         self.starting_pos=['13', '26', '29', '34', '50', '53', '91', '94', '103', '112', '117', '132', '138', '141', '155', '174', '197', '198']
-        self.board=game_board
+        self.board=BOARD_GRAPH
         self.winner=0
 
         self.mrx_pos=(choice(self.starting_pos))
@@ -33,20 +37,22 @@ class Game():
         self.mrx_moves=[self.mrx_pos]
 
         self.detectives_pos=random.sample(self.starting_pos, NUM_DETECTIVES)
+        self.detectives_moves=[self.detectives_pos]
+
         self.turn=0
         self.mrx_tickets={
             "taxi":4,
             "bus":3,
             "underground":3,
             "water":5,
-            "double":2
+            "duble":2
 
         }
         self.detective_tickets=[{
             "taxi":10,
             "bus":8,
             "underground":4
-        }for i in range(NUM_DETECTIVES)]
+        }for i in range(self.num_detectives)]
         
 
     def x_turn(self, duble_tickets=True ):
@@ -54,7 +60,7 @@ class Game():
         avaiable_moves=self.find_legal_moves_x(duble_tickets)
         new_pos=str(random_key_value(avaiable_moves))
 
-        if new_pos=="double":
+        if new_pos=="duble":
             ticket1=self.x_turn(duble_tickets=False)
             if self.check_victory(silent=True):
                 return ticket1
@@ -67,29 +73,43 @@ class Game():
         else:
             self.mrx_pos=new_pos
             self.mrx_moves.append(self.mrx_pos)
-            ticket = next((k for k, v in avaiable_moves.items() if new_pos in v ), None)
+            ticket = next((veichle for veichle, node in avaiable_moves.items() if new_pos in node ), None)
             self.turn += 1
             return str(ticket)
     
+    def x_automated_turn(self, proposed_mrx_pos, ticket):
+        avaiable_moves=self.find_legal_moves_x(duble_tickets=False)
+        if not any(proposed_mrx_pos in dests for dests in avaiable_moves.values()):
+            print("mossa non valida")
+        else:
+            self.mrx_pos=proposed_mrx_pos
+            self.mrx_moves.append(self.mrx_pos)
+            self.turn += 1
+            return str(ticket)
+
+
+
     def find_legal_moves_x(self, duble_tickets=True):
         moves = {}
         
         for vehicle, tickets in self.mrx_tickets.items():
             if tickets:
-                moves[vehicle] = [str(v) for _, v, data in self.board.board.edges(self.mrx_pos, data=True) if data["type"] == vehicle]
-        if self.mrx_tickets["double"] and duble_tickets:
-            moves["double"]="double"
+                moves[vehicle] = [str(v) for _, v, data in self.board.edges(self.mrx_pos, data=True) if data["type"] == vehicle]
+        if self.mrx_tickets["duble"] and duble_tickets:
+            moves["duble"]="duble"
         return moves
     
     def check_victory(self, silent=False):
         if str(self.mrx_pos) in self.detectives_pos:
             if silent==False:
                 print("detectives WON!")
+                pass
             self.winner=-1
             return 1
         if self.turn==22:
             if silent==False:
                 print("Mr. X WON!")
+                pass
             self.winner=1
             return 1
         return 0
@@ -98,13 +118,13 @@ class Game():
         pos = self.detectives_pos[detective_id]
         return any(
             self.detective_tickets[detective_id][d["type"]]
-            for d in self.board.board[pos][nodo].values() if d["type"] != "water"
+            for d in self.board[pos][nodo].values() if d["type"] != "water"
         )
     
     def use_tickets(self, detective_id, origin, destination):
         for veichle in ["taxi", "bus", "underground"]:
             if self.detective_tickets[detective_id][veichle] > 0:
-                edges = self.board.board[origin][destination]
+                edges = self.board[origin][destination]
                 if any(d["type"] == veichle for d in edges.values()):
                     self.detective_tickets[detective_id][veichle] -= 1
                     return veichle
@@ -114,14 +134,23 @@ class Game():
         #find legal moves
         nodi_occupati = self.detectives_pos[:id] + self.detectives_pos[id+1:]
         nodi_accessibili = [
-            node for node in self.board.board.neighbors(self.detectives_pos[id])
+            node for node in self.board.neighbors(self.detectives_pos[id])
             if node not in nodi_occupati and self.has_tickets(id, node)
-        ]        
+        ] 
         try:
             candidates = [(node, SHORTEST_PATH_MATRIX[int(node)-1][np.argmax(belief_state)]) for node in nodi_accessibili]
-            node, distance = min(candidates, key=lambda x: x[1])            
+            node, distance = min(candidates, key=lambda x: x[1]) 
+            
+            #nodi_validi = [n for n in self.board.board.nodes() if n not in nodi_da_evitare]
+            #G_limitato = self.board.board.subgraph(nodi_validi)
+            #nodo_valutato=shortest_path(G_limitato, self.detectives_pos[id], str(np.argmax(belief_state)+1))[1] 
+            
+            #if nodo_valutato != node:
+                #print("nodo valutato != node")          
             self.use_tickets(id,self.detectives_pos[id], node)
             self.detectives_pos[id]=node
+
+
 
         except ValueError: 
             #print(f"detective {id} is blocked")
