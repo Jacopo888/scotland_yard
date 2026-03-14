@@ -2,8 +2,8 @@ from copy import deepcopy
 import math
 from MCTS_Node import MCTSNode
 from utility import play_mrx_turn, play_one_game
-NUM_SIMULATIONS=25
-EXPLORATIONS=20
+NUM_SIMULATIONS=75
+EXPLORATIONS=25
 #I wanto to have 10 explorations
 
 

@@ -4,14 +4,22 @@ _BUS_MATRIX = np.load("./Matrix_generation/bus_matrix.npy").T
 _UNDERGROUND_MATRIX = np.load("./Matrix_generation/underground_matrix.npy").T
 _UNKNOWN_MATRIX = np.load("./Matrix_generation/unknown_matrix.npy").T
 class Detective_Engine():
-    def __init__(self, detectives_pos, belief_state=np.ones(199)*0.005):
+    def __init__(self, detectives_pos, belief_state=None, skip_filter=False):
         self.detectives_pos=detectives_pos
-        self.belief_state=belief_state
-        self.kalman_filter()
+        self.belief_state=belief_state if belief_state is not None else np.ones(199)*0.005
+        if not skip_filter:
+            self.kalman_filter()
         self.taxi_matrix = _TAXI_MATRIX
         self.bus_matrix = _BUS_MATRIX
         self.underground_matrix = _UNDERGROUND_MATRIX
         self.unknown_matrix = _UNKNOWN_MATRIX
+
+    def copy(self, new_detectives_pos=None):
+        return Detective_Engine(
+            new_detectives_pos if new_detectives_pos is not None else self.detectives_pos,
+            self.belief_state.copy(),
+            skip_filter=True
+        )
                 
 
     def update_belief_after_mrx_move(self, tickets):

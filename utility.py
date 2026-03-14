@@ -1,10 +1,9 @@
 from copy import deepcopy
-from detective_engine import Detective_Engine
 
 
 def play_mrx_turn(starting_pos, game_status, detective_engine, ticket):
         game_on_the_next_status=deepcopy(game_status)
-        detective_engine_on_the_next_status=Detective_Engine(game_on_the_next_status.detectives_pos, belief_state=deepcopy(detective_engine.belief_state))
+        detective_engine_on_the_next_status=detective_engine.copy(game_on_the_next_status.detectives_pos)
         
         game_on_the_next_status.mrx_pos=starting_pos
         game_on_the_next_status.turn += 1
@@ -22,7 +21,7 @@ def play_mrx_turn(starting_pos, game_status, detective_engine, ticket):
 
 def play_detectives_turn(game, detective_engine):
     game_on_the_next_status=deepcopy(game)
-    detective_engine=Detective_Engine(game_on_the_next_status.detectives_pos, belief_state=deepcopy(detective_engine.belief_state))
+    detective_engine=detective_engine.copy(game_on_the_next_status.detectives_pos)
     if game_on_the_next_status.check_victory(silent=True):
                 return game_on_the_next_status, detective_engine
     for id in range(game_on_the_next_status.num_detectives):
@@ -38,7 +37,7 @@ def play_detectives_turn(game, detective_engine):
 def play_one_game( game_status, detective_engine):
         #create a copy of the game status after the move that we want to test
         game=deepcopy(game_status)
-        curr_detective_engine=Detective_Engine(game.detectives_pos, deepcopy(detective_engine.belief_state) )
+        curr_detective_engine=detective_engine.copy(game.detectives_pos)
         #simulate the game till endgame. -1 if detectives win, 1 if mrx win
         game_over=False
         while True:
