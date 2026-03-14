@@ -38,6 +38,17 @@ The detective engine (`detective_engine.py`) maintains a probability distributio
 
 Each detective moves toward the station with the highest probability, using a precomputed shortest-path tensor.
 
+### Belief State Visualizer
+
+The belief state visualizer (`belief_state_visualizer.py`) opens a second Tkinter window that displays a real-time heatmap of where the detectives think Mr. X might be.
+
+- **Heatmap**: each of the 199 stations is drawn as a circle whose color and size reflect the current probability of Mr. X being there. The gradient goes from black (probability ≈ 0) to bright red (highest probability).
+- **Labels**: stations with probability above 10% of the maximum show their node number and numeric probability; the rest show only a dimmed node number.
+- **Color bar**: a legend on the right side maps the color gradient to actual probability values (0 → max P(Mr. X)).
+- **Live updates**: the visualizer refreshes after every detective turn, every Mr. X move, and every spotting event (turns 5, 10, 15, 20), so you can watch the belief state sharpen and spread in real time.
+
+The visualizer is instantiated in `main.py` and updated by calling `belief_state.show(detective_engine.belief_state)` at each relevant point in the game loop.
+
 ## Project Structure
 
 ```

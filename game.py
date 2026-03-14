@@ -127,13 +127,13 @@ class Game():
     def check_victory(self, silent=False):
         if str(self.mrx_pos) in self.detectives_pos:
             if silent==False:
-                print("detectives WON!")
+                #print("detectives WON!")
                 pass
             self.winner=0
             return 1
         if self.turn>=22:
             if silent==False:
-                print("Mr. X WON!")
+                #print("Mr. X WON!")
                 pass
             self.winner=1
             return 1
