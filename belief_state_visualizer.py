@@ -9,7 +9,7 @@ class BeliefStateVisualizer:
         self.width = width
         self.height = height
 
-        # Finestra separata (Toplevel) così non interferisce con la board
+        # Separate window (Toplevel) so it doesn't interfere with the board
         self.win = tk.Toplevel(board.root)
         self.win.title("Belief State Visualization")
         self.canvas = tk.Canvas(self.win, width=width, height=height, bg="#1e1e1e")
@@ -17,7 +17,7 @@ class BeliefStateVisualizer:
 
         self._node_items = []
 
-        # Disegna archi una sola volta
+        # Draw edges once
         self._draw_edges()
         self.win.update()
 
@@ -34,18 +34,18 @@ class BeliefStateVisualizer:
             self.canvas.create_line(x1, y1, x2, y2, fill=color, width=1, tags="edge")
 
     def _prob_to_color(self, prob, max_prob):
-        """Mappa una probabilità a un colore dal nero al rosso intenso."""
+        """Map a probability to a color from black to intense red."""
         if max_prob <= 0:
             return "#1e1e1e"
         t = min(prob / max_prob, 1.0)
-        # Gradiente: nero -> rosso scuro -> rosso -> arancione/bianco
+        # Gradient: black -> dark red -> red -> orange/white
         r = int(40 + 215 * t)
         g = int(30 * (1 - t))
         b = int(30 * (1 - t))
         return f"#{r:02x}{g:02x}{b:02x}"
 
     def show(self, belief_state):
-        # Cancella nodi precedenti
+        # Clear previous nodes
         for item_id in self._node_items:
             self.canvas.delete(item_id)
         self._node_items.clear()
@@ -54,7 +54,7 @@ class BeliefStateVisualizer:
         max_prob = b.max() if b.max() > 0 else 1.0
 
         for node, (x, y) in self.pos.items():
-            idx = int(node) - 1  # nodi numerati da 1
+            idx = int(node) - 1  # nodes numbered from 1
             if idx < 0 or idx >= len(b):
                 continue
 
@@ -62,7 +62,7 @@ class BeliefStateVisualizer:
             color = self._prob_to_color(prob, max_prob)
             r = 10
 
-            # Nodi con probabilità alta sono più grandi
+            # Nodes with high probability are larger
             if prob > 0:
                 r = int(10 + 8 * (prob / max_prob))
 
@@ -72,7 +72,7 @@ class BeliefStateVisualizer:
             )
             self._node_items.append(oval)
 
-            # Mostra label solo se probabilità significativa
+            # Show label only if probability is significant
             if prob > max_prob * 0.1:
                 label = f"{node}\n{prob:.2f}"
                 text = self.canvas.create_text(
@@ -87,16 +87,16 @@ class BeliefStateVisualizer:
                 )
                 self._node_items.append(text)
 
-        # Nodi sopra archi
+        # Nodes above edges
         self.canvas.tag_raise("bnode", "edge")
 
-        # Disegna legenda/colorbar
+        # Draw legend/colorbar
         self._draw_colorbar(max_prob)
 
         self.win.update()
 
     def _draw_colorbar(self, max_prob):
-        # Cancella colorbar precedente
+        # Clear previous colorbar
         self.canvas.delete("colorbar")
 
         bar_x = self.width - 60

@@ -50,8 +50,8 @@ class Detective_Engine():
     
     def kalman_filter(self):
         if self.belief_state.sum() == 0:
-            print(f"Somma zero: belief_state={self.belief_state}, detectives={self.detectives_pos}")
-        prec_belief_state=self.belief_state[:]
+            print(f"Sum is zero: belief_state={self.belief_state}, detectives={self.detectives_pos}")
+        prev_belief_state=self.belief_state[:]
         #print(prec_belief_state, self.belief_state)
         for pos in self.detectives_pos:
             self.belief_state[int(pos) - 1] = 0        
@@ -59,6 +59,6 @@ class Detective_Engine():
         if s != 0:
             self.belief_state /= s
         else:
-            print(prec_belief_state)
-            print(f"Somma zero: belief_state={self.belief_state}, detectives={self.detectives_pos}")
+            print(prev_belief_state)
+            print(f"Sum is zero: belief_state={self.belief_state}, detectives={self.detectives_pos}")
         return

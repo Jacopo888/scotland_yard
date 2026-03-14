@@ -4,7 +4,7 @@ from MCTS_Node import MCTSNode
 from utility import play_mrx_turn, play_one_game
 NUM_SIMULATIONS=75
 EXPLORATIONS=25
-#I wanto to have 10 explorations
+#I want to have 10 explorations
 
 
 
@@ -24,7 +24,7 @@ class Mrx_Engine():
         while iterations<NUM_SIMULATIONS:
             iterations +=1
             score += play_one_game(game_on_the_next_status, detective_engine_on_the_next_status)
-        #print(f"nodo {starting_pos} ha punteggio {score}")
+        #print(f"node {starting_pos} has score {score}")
         return score
 
     def MontecarloTreeSearch(self, current_status=None, iterations=EXPLORATIONS):
@@ -43,14 +43,14 @@ class Mrx_Engine():
                 score = self.rollout(deepcopy(best_node.game_status), deepcopy(best_node.detective_engine))
                 best_node.update_visits(score)
                 best_node.check_terminal()
-                #print(f"nodo scelto:{best_node.game_status.mrx_pos}, {best_node.ticket}")
+                #print(f"chosen node:{best_node.game_status.mrx_pos}, {best_node.ticket}")
             
             elif best_node.visits == 1:
-                #print(f"nodo scelto ha figli :{best_node.game_status.mrx_pos}, {best_node.ticket}")
+                #print(f"chosen node has children:{best_node.game_status.mrx_pos}, {best_node.ticket}")
                 nodes += best_node.gen_child(is_root=False)
             
             elif best_node.visits > 1:
-                #print(f"nodo scelto già esplorato:{best_node.game_status.mrx_pos}, {best_node.ticket}")
+                #print(f"chosen node already explored:{best_node.game_status.mrx_pos}, {best_node.ticket}")
                 self.MontecarloTreeSearch(current_status=best_node, iterations=self.i+1)
                 self.i -= 1
             self.i +=1

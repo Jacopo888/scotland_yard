@@ -19,12 +19,12 @@ class MCTSNode():
         else:
             current_game_status, current_detective_engine = play_detectives_turn((self.game_status), (self.detective_engine))
         
-        avaiable_moves=current_game_status.find_legal_moves_x(duble_tickets=False)
+        available_moves=current_game_status.find_legal_moves_x(double_tickets=False)
         
-        for veichle,nodes in avaiable_moves.items():
+        for vehicle,nodes in available_moves.items():
             for node in nodes:
-                game_status, detective_engine_status = play_mrx_turn(node, (current_game_status), (current_detective_engine), veichle)
-                child_node=MCTSNode(game_status, detective_engine_status, veichle)
+                game_status, detective_engine_status = play_mrx_turn(node, (current_game_status), (current_detective_engine), vehicle)
+                child_node=MCTSNode(game_status, detective_engine_status, vehicle)
                 child_node.parent = self
                 self.child.append(child_node)
         return self.child[:]

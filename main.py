@@ -31,8 +31,8 @@ def play():
         
         #belief_state.show(detectiv4e_engine.belief_state)
         #board.update_detectives_pos(game.detectives_pos)
-        best_node, best_veichle= mrx_engine.MontecarloTreeSearch()
-        ticket=game.x_automated_turn(best_node, best_veichle)
+        best_node, best_vehicle= mrx_engine.MontecarloTreeSearch()
+        ticket=game.x_automated_turn(best_node, best_vehicle)
 
         if game.check_victory():
             break
@@ -54,7 +54,7 @@ time1=datetime.now()
 #board=Board()
 i=0
 while i<10 :
-    #print(f"partita {i}")
+    #print(f"game {i}")
     n += play()
     i +=1
 

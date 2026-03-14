@@ -11,7 +11,7 @@ class Board:
         self.width = width
         self.height = height
 
-        # Carica il grafo
+        # Load the graph
         self.board = nx.MultiGraph()
         with open("./Matrix_generation/connections.txt", "r") as file:
             connections = [line.strip().split(" ") for line in file]
@@ -20,7 +20,7 @@ class Board:
         self.board.add_nodes_from(stations)
         self.board.add_edges_from(connections)
 
-        # Layout fisso
+        # Fixed layout
         pos = nx.spring_layout(self.board, seed=42)
         margin = 50
         self.pos = {
@@ -39,9 +39,9 @@ class Board:
         self.detectives_pos = []
         self.mrx_pos = None
 
-        # Disegna archi una sola volta (non cambiano)
+        # Draw edges once (they don't change)
         self._draw_edges()
-        # Placeholder per nodi (verranno ridisegnati)
+        # Placeholder for nodes (will be redrawn)
         self._node_items = []
         self._draw_nodes()
         self.root.update()
@@ -54,12 +54,12 @@ class Board:
             self.canvas.create_line(x1, y1, x2, y2, fill=color, width=1, tags="edge")
 
     def _draw_nodes(self):
-        # Cancella i nodi precedenti
+        # Clear previous nodes
         for item_id in self._node_items:
             self.canvas.delete(item_id)
         self._node_items.clear()
 
-        # Converti detectives_pos in un set di stringhe per confronto coerente
+        # Convert detectives_pos to a set of strings for consistent comparison
         det_set = set(str(d) for d in self.detectives_pos)
         mrx_str = str(self.mrx_pos) if self.mrx_pos is not None else None
 
@@ -79,7 +79,7 @@ class Board:
             self._node_items.append(oval)
             self._node_items.append(text)
 
-        # Assicura che i nodi siano sopra gli archi
+        # Ensure nodes are drawn above edges
         self.canvas.tag_raise("node", "edge")
 
     def update_detectives_pos(self, detectives_pos):
