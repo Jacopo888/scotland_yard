@@ -29,7 +29,7 @@ def play():
         if game_over:
             break
         
-        #belief_state.show(detective_engine.belief_state)
+        #belief_state.show(detectiv4e_engine.belief_state)
         #board.update_detectives_pos(game.detectives_pos)
         best_node, best_veichle= mrx_engine.MontecarloTreeSearch()
         ticket=game.x_automated_turn(best_node, best_veichle)
@@ -60,4 +60,4 @@ while i<10 :
 
 time2=datetime.now()
 print(time2-time1)
-print(n) 
+print(n)
