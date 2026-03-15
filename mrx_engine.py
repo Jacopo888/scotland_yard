@@ -1,91 +1,64 @@
-from copy import deepcopy
 import math
-from MCTS_Node import MCTSNode
-from utility import play_mrx_turn, play_one_game
-NUM_SIMULATIONS=75
-EXPLORATIONS=25
-#I want to have 10 explorations
+from copy import deepcopy
+
+from mcts_node import MCTSNode
+from utility import play_five_turns
+
+NUM_SIMULATIONS = 25
+NUM_EXPLORATIONS = 15
+UCB1_CONSTANT = 1.42
 
 
-
-
-class Mrx_Engine():
+class MrxEngine:
     def __init__(self, game, detective_engine):
-        self.root=MCTSNode(game, detective_engine, None)
-        self.nodes=[]
+        self.root = MCTSNode(game, detective_engine, None)
+        self.iteration = 1
 
-
-    def rollout(self, game_on_the_next_status, detective_engine_on_the_next_status):
-        #I simulate the move that I want to test 
-        #game_on_the_next_status , detective_engine_on_the_next_status = self.play_mrx_turn(starting_pos,self.game_status, self.detective_engine, ticket)
-        #From this position, I simulate 100 games and evaluate the score
-        iterations=0
-        score=0
-        while iterations<NUM_SIMULATIONS:
-            iterations +=1
-            score += play_one_game(game_on_the_next_status, detective_engine_on_the_next_status)
-        #print(f"node {starting_pos} has score {score}")
+    def rollout(self, game, detective_engine):
+        score = 0
+        for _ in range(NUM_SIMULATIONS):
+            score += play_five_turns(game, detective_engine)
         return score
 
-    def MontecarloTreeSearch(self, current_status=None, iterations=EXPLORATIONS):
-        
-        if current_status is None:
-            current_status = self.root
-            self.i=1
-            self.nodes += current_status.gen_child()
-            nodes=self.nodes[:]
-        else:
-            nodes=current_status.child[:]
+    def search(self):
+        self.iteration = 1
+        self.root.children = []
 
-        while self.i<iterations:
-            best_node=self.UCB1(nodes)
-            if best_node.visits==0:
-                score = self.rollout(deepcopy(best_node.game_status), deepcopy(best_node.detective_engine))
-                best_node.update_visits(score)
-                best_node.check_terminal()
-                #print(f"chosen node:{best_node.game_status.mrx_pos}, {best_node.ticket}")
-            
-            elif best_node.visits == 1:
-                #print(f"chosen node has children:{best_node.game_status.mrx_pos}, {best_node.ticket}")
-                nodes += best_node.gen_child(is_root=False)
-            
-            elif best_node.visits > 1:
-                #print(f"chosen node already explored:{best_node.game_status.mrx_pos}, {best_node.ticket}")
-                self.MontecarloTreeSearch(current_status=best_node, iterations=self.i+1)
-                self.i -= 1
-            self.i +=1
-        
-        if current_status == self.root:
-            nodes=[[node.score, node.game_status.mrx_pos, node.parent.game_status.mrx_pos] for node in nodes]
-            #print(nodes)
-            optimal_move=self.UCB1(self.root.child, final=True)
-            #print(f"best move: {optimal_move.game_status.mrx_pos}")
-            self.i=1
-            self.nodes=[]
-            self.root.child=[]
-            return optimal_move.game_status.mrx_pos, optimal_move.ticket
-        return
-    
-    def UCB1(self, nodes, final=False):
+        root_children = self.root.expand()
+        self._explore(self.root, root_children, NUM_EXPLORATIONS)
+
+        best = self._best_child(self.root.children, exploit_only=True)
+        return best.game_status.mrx_pos, best.ticket
+
+    def _explore(self, node, nodes, max_iterations):
+        while self.iteration < max_iterations:
+            best = self._best_child(nodes)
+            if best.visits == 0:
+                score = self.rollout(deepcopy(best.game_status), deepcopy(best.detective_engine))
+                best.backpropagate(score)
+                best.check_terminal()
+            elif best.visits == 1:
+                nodes += best.expand(is_root=False)
+            else:
+                self._explore(best, best.children, self.iteration + 1)
+                self.iteration -= 1
+            self.iteration += 1
+
+    def _best_child(self, nodes, exploit_only=False):
         best_score = float("-inf")
         best_node = None
         for node in nodes:
-            if node.is_terminal and not final:
+            if node.is_terminal and not exploit_only:
                 continue
             if node.visits == 0:
-                ucb1_score = float("inf")
+                ucb1 = float("inf")
             else:
-                ucb1_score = node.score + 1.42*math.sqrt((math.log(self.i))/node.visits)
-            
-            if ucb1_score > best_score:
-                best_score = ucb1_score
+                ucb1 = node.score + UCB1_CONSTANT * math.sqrt(
+                    math.log(self.iteration) / node.visits
+                )
+            if ucb1 > best_score:
+                best_score = ucb1
                 best_node = node
-        for node in nodes:
-            if node.score==25:
-                best_node=node
-        if best_node==None:
-            best_node=nodes[0]
+        if best_node is None:
+            return self._best_child(nodes, exploit_only=True)
         return best_node
-        
-
-

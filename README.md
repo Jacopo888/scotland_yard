@@ -19,14 +19,24 @@ Mr. X uses **Monte Carlo Tree Search (MCTS)** to choose optimal moves, while the
 
 ### Mr. X — Monte Carlo Tree Search
 
-The Mr. X engine (`mrx_engine.py`) builds a tree of possible moves and evaluates them by simulating random games:
+The Mr. X engine (`mrx_engine.py`) builds a tree of possible moves and evaluates them through simulation:
 
 1. **Selection**: picks the most promising node using UCB1 (`score + 1.42 * sqrt(ln(N) / n)`)
 2. **Expansion**: generates legal moves from the selected node
-3. **Simulation (rollout)**: plays 75 random games to completion
+3. **Simulation (rollout)**: runs 25 simulations per node to evaluate each candidate move
 4. **Backpropagation**: updates scores back up the tree
 
-Parameters: 25 expansion iterations, 75 simulations per node.
+Parameters: 15 expansion iterations, 25 simulations per rollout.
+
+#### MCTS Rollout Value Function
+
+Two approaches were implemented and tested for evaluating positions during MCTS rollouts:
+
+1. **Distance-based evaluation (active)**: simulates 5 turns from the candidate position, then returns the shortest-path distance between Mr. X and the nearest detective. Higher distance = better position for Mr. X. This acts as a heuristic that rewards moves leading to positions where Mr. X is far from all detectives.
+
+2. **Win/loss simulation**: simulates the game to completion from the candidate position and returns 1 if Mr. X wins, 0 if the detectives win. This gives a binary outcome based on full game playouts.
+
+The **distance-based evaluation** is currently used because it produced better results in practice. The shorter simulation horizon (5 turns vs full game) provides a more reliable signal, as full-game random rollouts introduce too much noise to effectively distinguish between moves.
 
 ### Detectives — Belief State + Kalman Filter
 
@@ -42,12 +52,22 @@ Each detective moves toward the station with the highest probability, using a pr
 
 The belief state visualizer (`belief_state_visualizer.py`) opens a second Tkinter window that displays a real-time heatmap of where the detectives think Mr. X might be.
 
-- **Heatmap**: each of the 199 stations is drawn as a circle whose color and size reflect the current probability of Mr. X being there. The gradient goes from black (probability ≈ 0) to bright red (highest probability).
+- **Heatmap**: each of the 199 stations is drawn as a circle whose color and size reflect the current probability of Mr. X being there. The gradient goes from black (probability = 0) to bright red (highest probability).
 - **Labels**: stations with probability above 10% of the maximum show their node number and numeric probability; the rest show only a dimmed node number.
-- **Color bar**: a legend on the right side maps the color gradient to actual probability values (0 → max P(Mr. X)).
+- **Color bar**: a legend on the right side maps the color gradient to actual probability values (0 -> max P(Mr. X)).
 - **Live updates**: the visualizer refreshes after every detective turn, every Mr. X move, and every spotting event (turns 5, 10, 15, 20), so you can watch the belief state sharpen and spread in real time.
 
-The visualizer is instantiated in `main.py` and updated by calling `belief_state.show(detective_engine.belief_state)` at each relevant point in the game loop.
+## Visual Mode
+
+To visualize the board and the belief state heatmap during gameplay, edit `main.py`:
+
+1. In the `if __name__ == "__main__"` block, replace `play()` with `play_visual()`
+2. The `play_visual()` function will open two Tkinter windows: the game board and the belief state heatmap
+
+```python
+if __name__ == "__main__":
+    play_visual()
+```
 
 ## Project Structure
 
@@ -57,18 +77,18 @@ scotland_yard/
 ├── game.py                     # Game state, moves, rules
 ├── detective_engine.py         # Detective AI (belief state + Kalman)
 ├── mrx_engine.py               # Mr. X AI (MCTS)
-├── MCTS_Node.py                # MCTS tree node
+├── mcts_node.py                # MCTS tree node
 ├── utility.py                  # Turn simulation helpers
 ├── board_generation.py         # Board visualization (Tkinter)
 ├── belief_state_visualizer.py  # Belief state heatmap
 └── Matrix_generation/
     ├── connections.txt                # Graph: node1 node2 vehicle
     ├── board_graph.pkl                # Serialized NetworkX graph
-    ├── taxi_matrix.npy                # Taxi transition matrix (199×199)
+    ├── taxi_matrix.npy                # Taxi transition matrix (199x199)
     ├── bus_matrix.npy                 # Bus transition matrix
     ├── underground_matrix.npy         # Underground transition matrix
     ├── unknown_matrix.npy             # Water/unknown transition matrix
-    ├── distanze_scotland_yard_3d.npy  # Shortest path tensor (8×199×199)
+    ├── distanze_scotland_yard_3d.npy  # Shortest path tensor (8x199x199)
     ├── Gen_board.py                   # Generates board_graph.pkl
     ├── Stochastic_matrix_Gen.py       # Generates transition matrices
     └── shortest_path-matrix.py        # Generates shortest path tensor

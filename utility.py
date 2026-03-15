@@ -1,66 +1,88 @@
 from copy import deepcopy
 
+from game import SHORTEST_PATH_TENSOR
+
 
 def play_mrx_turn(starting_pos, game_status, detective_engine, ticket):
-        game_on_the_next_status=deepcopy(game_status)
-        detective_engine_on_the_next_status=detective_engine.copy(game_on_the_next_status.detectives_pos)
-        
-        game_on_the_next_status.mrx_pos=starting_pos
-        game_on_the_next_status.turn += 1
-        game_on_the_next_status.mrx_moves.append(game_on_the_next_status.mrx_pos)
-        if game_on_the_next_status.check_victory(silent=True):
-            return game_on_the_next_status, detective_engine_on_the_next_status
-        
-        detective_engine_on_the_next_status.update_belief_after_mrx_move(ticket)
-        
-        if game_on_the_next_status.turn%5==0:
-            detective_engine_on_the_next_status.mrx_is_spotted(game_on_the_next_status.mrx_pos)    
+    game = deepcopy(game_status)
+    engine = detective_engine.copy(game.detectives_pos)
 
-        return game_on_the_next_status, detective_engine_on_the_next_status
+    game.mrx_pos = starting_pos
+    game.turn += 1
+    game.mrx_moves.append(game.mrx_pos)
+
+    if game.check_victory(silent=True):
+        return game, engine
+
+    engine.update_belief_after_mrx_move(ticket)
+
+    if game.turn % 5 == 0:
+        engine.mrx_is_spotted(game.mrx_pos)
+
+    return game, engine
 
 
-def play_detectives_turn(game, detective_engine):
-    game_on_the_next_status=deepcopy(game)
-    detective_engine=detective_engine.copy(game_on_the_next_status.detectives_pos)
-    if game_on_the_next_status.check_victory(silent=True):
-                return game_on_the_next_status, detective_engine
-    for id in range(game_on_the_next_status.num_detectives):
-        game_on_the_next_status.detective_automated_turn(detective_engine.belief_state, id)
-        if game_on_the_next_status.check_victory(silent=True):
-            return game_on_the_next_status, detective_engine
-        detective_engine.kalman_filter()
-    return game_on_the_next_status, detective_engine
+def play_detectives_turn(game_status, detective_engine):
+    game = deepcopy(game_status)
+    engine = detective_engine.copy(game.detectives_pos)
 
-     
-     
+    if game.check_victory(silent=True):
+        return game, engine
 
-def play_one_game( game_status, detective_engine):
-        #create a copy of the game status after the move that we want to test
-        game=deepcopy(game_status)
-        curr_detective_engine=detective_engine.copy(game.detectives_pos)
-        #simulate the game till endgame. -1 if detectives win, 1 if mrx win
-        game_over=False
-        while True:
+    for i in range(game.num_detectives):
+        game.detective_automated_turn(engine.belief_state, i)
+        if game.check_victory(silent=True):
+            return game, engine
+        engine.kalman_filter()
+
+    return game, engine
+
+
+def _simulate_turns(game_status, detective_engine, max_turns=None):
+    game = deepcopy(game_status)
+    engine = detective_engine.copy(game.detectives_pos)
+    turns_played = 0
+
+    while max_turns is None or turns_played < max_turns:
+        if game.check_victory(silent=True):
+            break
+
+        game_over = False
+        for i in range(game.num_detectives):
+            game.detective_automated_turn(engine.belief_state, i)
             if game.check_victory(silent=True):
+                game_over = True
                 break
-            for id in range(game.num_detectives):
-                game.detective_automated_turn(curr_detective_engine.belief_state, id)
-                if game.check_victory(silent=True):
-                    game_over=True
-                    break
-                curr_detective_engine.kalman_filter()
-            if game_over:
-                break
-            
-            ticket=game.x_turn()
-            
-            if game.check_victory(silent=True):
-                break
+            engine.kalman_filter()
+        if game_over:
+            break
 
-            curr_detective_engine.update_belief_after_mrx_move(ticket)
-            
-            if game.turn%5==0:
-                curr_detective_engine.mrx_is_spotted(game.mrx_pos)
+        ticket = game.x_random_turn()
+        if game.check_victory(silent=True):
+            break
 
-        return game.winner
+        engine.update_belief_after_mrx_move(ticket)
+        if game.turn % 5 == 0:
+            engine.mrx_is_spotted(game.mrx_pos)
 
+        turns_played += 1
+
+    return game
+
+
+def play_one_game(game_status, detective_engine):
+    game = _simulate_turns(game_status, detective_engine)
+    return game.winner
+
+
+def play_five_turns(game_status, detective_engine):
+    game = _simulate_turns(game_status, detective_engine, max_turns=5)
+    return _min_detective_distance(game.detectives_pos, game.mrx_pos)
+
+
+def _min_detective_distance(detectives_pos, mrx_pos):
+    mrx_idx = int(mrx_pos) - 1
+    return min(
+        int(SHORTEST_PATH_TENSOR[7][int(pos) - 1][mrx_idx])
+        for pos in detectives_pos
+    )
