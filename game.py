@@ -170,6 +170,32 @@ class Game:
         clone.mrx_tickets = self.mrx_tickets.copy()
         clone.detective_tickets = [t.copy() for t in self.detective_tickets]
         return clone
+    def copy(self):
+        clone = Game.__new__(Game)
+        clone.num_detectives = self.num_detectives
+        clone.winner = self.winner
+        clone.mrx_pos = self.mrx_pos
+        clone.mrx_moves = self.mrx_moves[:]
+        clone.detectives_pos = self.detectives_pos[:]
+        clone.detectives_moves = [m[:] for m in self.detectives_moves]
+        clone.turn = self.turn
+        clone.mrx_tickets = self.mrx_tickets.copy()
+        clone.detective_tickets = [t.copy() for t in self.detective_tickets]
+        return clone
+    
+    def snapshot(self):
+        return (self.winner, self.mrx_pos, self.mrx_moves[:],
+                self.detectives_pos[:], [m[:] for m in self.detectives_moves],
+                self.turn, self.mrx_tickets.copy(),
+                [t.copy() for t in self.detective_tickets])
+
+    def restore(self, snap):
+        (self.winner, self.mrx_pos, self.mrx_moves, self.detectives_pos,
+        self.detectives_moves, self.turn, self.mrx_tickets,
+        self.detective_tickets) = (
+            snap[0], snap[1], snap[2][:], snap[3][:],
+            [m[:] for m in snap[4]], snap[5], snap[6].copy(),
+            [t.copy() for t in snap[7]])
 
 
 def _random_move(available_moves):

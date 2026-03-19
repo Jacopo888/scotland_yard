@@ -2,7 +2,7 @@
 
 A Python implementation of the **Scotland Yard** board game, featuring fully automated AI players for both Mr. X and the detectives.
 
-Mr. X uses **Monte Carlo Tree Search (MCTS)** to choose optimal moves, while the detectives rely on a **belief state** updated via Kalman filtering to estimate Mr. X's position.
+Mr. X uses **Monte Carlo Tree Search (MCTS)** to choose optimal moves, while the detectives rely on a **belief state** updated via Markov Chains and Kalman filtering to estimate Mr. X's position.
 
 ## Game Rules
 
@@ -10,7 +10,7 @@ Mr. X uses **Monte Carlo Tree Search (MCTS)** to choose optimal moves, while the
 - **Players**: 1 Mr. X vs 5 detectives
 - **Turns**: detectives move first, then Mr. X. The game lasts up to 22 turns
 - **Detective tickets**: taxi (10), bus (8), underground (4)
-- **Mr. X tickets**: taxi (4), bus (3), underground (3), water (5), double move (2)
+- **Mr. X tickets**: taxi (4), bus (3), underground (3), water (5), double move (2) 
 - **Visibility**: Mr. X is hidden, but his position is revealed every 5 turns. Detectives only see the ticket type he uses
 - **Detectives win**: by landing on Mr. X's position
 - **Mr. X wins**: by surviving until turn 22
@@ -23,7 +23,7 @@ The Mr. X engine (`mrx_engine.py`) builds a tree of possible moves and evaluates
 
 1. **Selection**: picks the most promising node using UCB1 (`score + 1.42 * sqrt(ln(N) / n)`)
 2. **Expansion**: generates legal moves from the selected node
-3. **Simulation (rollout)**: runs 25 simulations per node to evaluate each candidate move
+3. **Simulation (rollout)**: runs N simulations per node to evaluate each candidate move
 4. **Backpropagation**: updates scores back up the tree
 
 Parameters: 15 expansion iterations, 25 simulations per rollout.
@@ -42,7 +42,7 @@ The **distance-based evaluation** is currently used because it produced better r
 
 The detective engine (`detective_engine.py`) maintains a probability distribution over all 199 stations:
 
-- **Update**: after each Mr. X move, the belief state is multiplied by the transition matrix of the vehicle used
+- **Update With a Markov Chain Model**: after each Mr. X move, the belief state is multiplied by the transition matrix of the vehicle used
 - **Kalman filter**: zeroes out probability at detective positions and renormalizes
 - **Spotting**: when Mr. X is spotted (every 5 turns), the belief becomes 100% at his real position
 
