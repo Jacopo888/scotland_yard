@@ -69,6 +69,9 @@ if __name__ == "__main__":
     play_visual()
 ```
 
+## AI usage
+I used Claude to help implement the visual components (board visualizer and belief state representation).
+
 ## Project Structure
 
 ```
