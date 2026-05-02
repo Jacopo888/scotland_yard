@@ -92,7 +92,7 @@ def play():
 
 
 if __name__ == "__main__":
-    NUM_GAMES = 10
+    NUM_GAMES = 100
 
     start = datetime.now()
     mrx_wins = sum(play() for _ in range(NUM_GAMES))

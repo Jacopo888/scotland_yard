@@ -30,14 +30,15 @@ class DetectiveEngine:
             skip_filter=True,
         )
 
-    def update_belief_after_mrx_move(self, tickets):
-        if isinstance(tickets, str):
-            tickets = [tickets]
-        for ticket in tickets:
+    def update_belief_after_mrx_move(self, ticket):
             matrix = TICKET_TO_MATRIX.get(ticket)
             if matrix is not None:
                 self.belief_state = matrix @ self.belief_state
             self.kalman_filter()
+            if sum(self.belief_state)==0:
+                print("somma nulla")
+            if ticket == "blocked":
+                print("bloccato")
 
     def mrx_is_spotted(self, mrx_pos):
         self.belief_state[:] = 0

@@ -10,7 +10,7 @@ Mr. X uses **Monte Carlo Tree Search (MCTS)** to choose optimal moves, while the
 - **Players**: 1 Mr. X vs 5 detectives
 - **Turns**: detectives move first, then Mr. X. The game lasts up to 22 turns
 - **Detective tickets**: taxi (10), bus (8), underground (4)
-- **Mr. X tickets**: taxi (4), bus (3), underground (3), water (5), double move (2) 
+- **Mr. X tickets**: taxi (4), bus (3), underground (3), water (5)
 - **Visibility**: Mr. X is hidden, but his position is revealed every 5 turns. Detectives only see the ticket type he uses
 - **Detectives win**: by landing on Mr. X's position
 - **Mr. X wins**: by surviving until turn 22

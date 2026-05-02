@@ -33,14 +33,24 @@ class MrxEngine:
         self.root.children = []
 
         root_children = self.root.expand()
+        if not root_children:
+            # Mr.X completamente bloccato: nessuna mossa, nessun ticket.
+            return self.root.game_status.mrx_pos, None
+
         self._explore(self.root, root_children, NUM_EXPLORATIONS)
 
         best = self._best_child(self.root.children, exploit_only=True)
+        if best is None:
+            # Tutti i children erano terminali e _best_child non ne ha
+            # selezionato nessuno: prendiamo comunque il primo a disposizione.
+            best = self.root.children[0]
         return best.game_status.mrx_pos, best.ticket
 
     def _explore(self, node, nodes, max_iterations):
         while self.iteration < max_iterations:
             best = self._best_child(nodes)
+            if best is None:
+                return
             if best.visits == 0:
                 score = self.rollout(best.game_status, best.detective_engine)
                 best.backpropagate(score)
@@ -53,6 +63,8 @@ class MrxEngine:
             self.iteration += 1
 
     def _best_child(self, nodes, exploit_only=False):
+        if not nodes:
+            return None
         best_score = float("-inf")
         best_node = None
         for node in nodes:
@@ -67,6 +79,6 @@ class MrxEngine:
             if ucb1 > best_score:
                 best_score = ucb1
                 best_node = node
-        if best_node is None:
+        if best_node is None and not exploit_only:
             return self._best_child(nodes, exploit_only=True)
         return best_node

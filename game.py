@@ -60,26 +60,15 @@ class Game:
             "bus": 3,
             "underground": 3,
             "water": 5,
-            "double": 2,
         }
         self.detective_tickets = [
             {"taxi": 10, "bus": 8, "underground": 4}
             for _ in range(self.num_detectives)
         ]
 
-    def x_random_turn(self, allow_double=True):
-        available_moves = self.find_legal_moves_x(allow_double)
+    def x_random_turn(self):
+        available_moves = self.find_legal_moves_x()
         chosen = _random_move(available_moves)
-
-        if chosen == "double":
-            self.mrx_moves.append("double")
-            self.mrx_tickets["double"] -= 1
-            ticket1 = self.x_random_turn(allow_double=False)
-            if self.check_victory(silent=True):
-                return ticket1
-            ticket2 = self.x_random_turn(allow_double=False)
-            return [ticket1, ticket2]
-
         if chosen is None:
             self.turn += 1
             return "blocked"
@@ -92,20 +81,22 @@ class Game:
         return ticket
 
     def x_automated_turn(self, proposed_pos, ticket):
+        if ticket is None:
+            # Mr.X bloccato: nessuna mossa effettuata.
+            self.turn += 1
+            return None
         self.mrx_pos = proposed_pos
         self.mrx_moves.append(self.mrx_pos)
         self.turn += 1
         self.mrx_tickets[ticket] -= 1
         return ticket
 
-    def find_legal_moves_x(self, allow_double=True):
+    def find_legal_moves_x(self):
         moves = {}
         for neighbor, types in ADJ[self.mrx_pos].items():
             for t in types:
                 if self.mrx_tickets.get(t, 0) > 0:
                     moves.setdefault(t, []).append(neighbor)
-        if allow_double and self.mrx_tickets["double"] > 0:
-            moves["double"] = "double"
         return moves
 
     def check_victory(self, silent=False):
@@ -203,7 +194,5 @@ def _random_move(available_moves):
     if not valid_vehicles:
         return None
     vehicle = random.choice(valid_vehicles)
-    if vehicle == "double":
-        return "double"
     destination = random.choice(available_moves[vehicle])
     return destination, vehicle
