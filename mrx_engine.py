@@ -73,7 +73,12 @@ class MrxEngine:
             if node.visits == 0:
                 ucb1 = float("inf")
             else:
-                ucb1 = node.score + UCB1_CONSTANT * math.sqrt(
+                # UCB1 standard: mean score (score / visits) + exploration term.
+                # Prima qui veniva usato node.score cumulativo: questo gonfia il
+                # punteggio dei nodi visitati piu' spesso e inverte la preferenza
+                # rispetto al UCB1 canonico.
+                mean_score = node.score / node.visits
+                ucb1 = mean_score + UCB1_CONSTANT * math.sqrt(
                     math.log(self.iteration) / node.visits
                 )
             if ucb1 > best_score:

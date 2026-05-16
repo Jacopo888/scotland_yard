@@ -10,6 +10,11 @@ def play_mrx_turn(starting_pos, game_status, detective_engine, ticket):
     game.mrx_pos = starting_pos
     game.turn += 1
     game.mrx_moves.append(game.mrx_pos)
+    # Allinea il decremento ticket al comportamento di Game.x_automated_turn /
+    # Game.x_random_turn: senza questo, nei sotto-alberi MCTS Mr.X avrebbe sempre
+    # +1 ticket del tipo appena usato per la durata del rollout.
+    if ticket in game.mrx_tickets:
+        game.mrx_tickets[ticket] -= 1
 
     if game.check_victory(silent=True):
         return game, engine
