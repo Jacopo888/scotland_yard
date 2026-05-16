@@ -48,7 +48,7 @@ def play_visual():
         visualizer.show(engine.belief_state)
         board.update_mrx_position(game.mrx_pos)
 
-        if game.turn % 5 == 0:
+        if (game.turn-3) % 5 == 0:
             engine.mrx_is_spotted(game.mrx_pos)
             visualizer.show(engine.belief_state)
 
@@ -85,7 +85,7 @@ def play():
 
         engine.update_belief_after_mrx_move(best_ticket)
 
-        if game.turn % 5 == 0:
+        if (game.turn-3) % 5 == 0:
             engine.mrx_is_spotted(game.mrx_pos)
 
     return game.winner

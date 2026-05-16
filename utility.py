@@ -16,7 +16,7 @@ def play_mrx_turn(starting_pos, game_status, detective_engine, ticket):
 
     engine.update_belief_after_mrx_move(ticket)
 
-    if game.turn % 5 == 0:
+    if (game.turn-3) % 5 == 0:
         engine.mrx_is_spotted(game.mrx_pos)
 
     return game, engine
@@ -62,7 +62,7 @@ def _simulate_turns(game_status, detective_engine, max_turns=None):
             break
 
         engine.update_belief_after_mrx_move(ticket)
-        if game.turn % 5 == 0:
+        if (game.turn-3) % 5 == 0:
             engine.mrx_is_spotted(game.mrx_pos)
 
         turns_played += 1
@@ -91,7 +91,7 @@ def _simulate_turns_inplace(game, engine, max_turns=None):
             break
 
         engine.update_belief_after_mrx_move(ticket)
-        if game.turn % 5 == 0:
+        if (game.turn-3) % 5 == 0:
             engine.mrx_is_spotted(game.mrx_pos)
 
         turns_played += 1
