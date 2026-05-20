@@ -1,0 +1,50 @@
+{
+  "checkpoint": "C:\\Users\\jacop\\OneDrive\\Desktop\\scotland_yard\\Notebook\\rgnn_ppo_best_20260519_132159.pt",
+  "checkpoint_metadata": {
+    "update": 10,
+    "gnn_wr": 0.87,
+    "heu_wr": 0.24,
+    "delta_pp": 63.0,
+    "validation_score": 99.0,
+    "fixed_eval": {
+      "fixed_gnn_wr": 0.87,
+      "fixed_heu_wr": 0.24,
+      "fixed_delta_pp": 63.0
+    },
+    "hard_eval": {
+      "hard_gnn_wr": 0.74,
+      "hard_heu_wr": 0.02,
+      "hard_delta_pp": 72.0
+    },
+    "source_kind": "ppo_best",
+    "source_checkpoint": "/kaggle/input/models/jacopodabundo/detective-rgnn/pytorch/default/1/rgnn_ppo_best_20260518_104338.pt"
+  },
+  "generated_at": "2026-05-20T16:01:51.287497",
+  "suites": {
+    "smoke_fixed": {
+      "n_games": 3,
+      "mrx_explorations": 15,
+      "mrx_simulations": 25,
+      "gnn_wins": 3,
+      "heuristic_wins": 2,
+      "gnn_winrate": 1.0,
+      "heuristic_winrate": 0.6666666666666666,
+      "delta_pp": 33.333333333333336,
+      "gnn_avg_final_turn": 7.333333333333333,
+      "heuristic_avg_final_turn": 10.666666666666666
+    },
+    "smoke_hard": {
+      "n_games": 1,
+      "mrx_explorations": 30,
+      "mrx_simulations": 50,
+      "gnn_wins": 1,
+      "heuristic_wins": 0,
+      "gnn_winrate": 1.0,
+      "heuristic_winrate": 0.0,
+      "delta_pp": 100.0,
+      "gnn_avg_final_turn": 7.0,
+      "heuristic_avg_final_turn": 22.0
+    }
+  },
+  "elapsed_seconds": 41.38739085197449
+}

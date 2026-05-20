@@ -1,14 +1,114 @@
+import argparse
 from datetime import datetime
 from time import sleep
 
-from game import Game
+import mrx_engine
 from detective_engine import DetectiveEngine
+from game import Game
 from mrx_engine import MrxEngine
 
 
+DETECTIVE_STRATEGIES = ("heuristic", "gnn")
+MRX_STRATEGIES = ("mcts", "random")
+
+
+def configure_mrx_strength(explorations=None, simulations=None):
+    if explorations is not None:
+        mrx_engine.NUM_EXPLORATIONS = int(explorations)
+    if simulations is not None:
+        mrx_engine.NUM_SIMULATIONS = int(simulations)
+
+
+def _load_gnn_policy(checkpoint=None, device=None):
+    from gnn_detective_engine import GNNDetectiveEngine
+
+    return GNNDetectiveEngine(checkpoint_path=checkpoint, device=device)
+
+
+def _play_detective_phase(game, belief_engine, detective_strategy, gnn_policy=None):
+    game_over = False
+    for detective_id in range(game.num_detectives):
+        if detective_strategy == "heuristic":
+            game.detective_automated_turn(belief_engine.belief_state, detective_id)
+        elif detective_strategy == "gnn":
+            gnn_policy.play_detective_turn(
+                game, belief_engine.belief_state, detective_id
+            )
+        else:
+            raise ValueError(f"Unsupported detective strategy: {detective_strategy}")
+
+        if game.check_victory(silent=True):
+            game_over = True
+            break
+        belief_engine.kalman_filter()
+
+    game.detectives_moves.append(game.detectives_pos[:])
+    return game_over
+
+
+def _play_mrx_phase(game, belief_engine, mrx_strategy, mrx_policy=None):
+    if mrx_strategy == "mcts":
+        best_pos, best_ticket = mrx_policy.search()
+        game.x_automated_turn(best_pos, best_ticket)
+        return best_ticket
+    if mrx_strategy == "random":
+        return game.x_random_turn()
+    raise ValueError(f"Unsupported Mr.X strategy: {mrx_strategy}")
+
+
+def play(
+    detective_strategy="heuristic",
+    mrx_strategy="mcts",
+    checkpoint=None,
+    device=None,
+    mrx_explorations=None,
+    mrx_simulations=None,
+    silent=True,
+):
+    """Play one game.
+
+    detective_strategy:
+        "heuristic" keeps the original belief/shortest-path detective policy.
+        "gnn" uses GNNDetectiveEngine with the selected checkpoint.
+    mrx_strategy:
+        "mcts" keeps the current Mr.X search engine.
+        "random" is a lightweight baseline/debug opponent.
+    """
+    configure_mrx_strength(mrx_explorations, mrx_simulations)
+
+    game = Game()
+    belief_engine = DetectiveEngine(game.detectives_pos)
+    mrx_policy = MrxEngine(game, belief_engine) if mrx_strategy == "mcts" else None
+    gnn_policy = (
+        _load_gnn_policy(checkpoint=checkpoint, device=device)
+        if detective_strategy == "gnn"
+        else None
+    )
+
+    while True:
+        if game.check_victory(silent=silent):
+            break
+
+        if _play_detective_phase(game, belief_engine, detective_strategy, gnn_policy):
+            break
+
+        best_ticket = _play_mrx_phase(game, belief_engine, mrx_strategy, mrx_policy)
+        if game.check_victory(silent=silent):
+            break
+
+        belief_engine.update_belief_after_mrx_move(best_ticket)
+        if (game.turn - 3) % 5 == 0:
+            belief_engine.mrx_is_spotted(game.mrx_pos)
+
+        if gnn_policy is not None:
+            gnn_policy.observe_mrx_move(game, best_ticket)
+
+    return game.winner
+
+
 def play_visual():
-    from board_generation import Board
     from belief_state_visualizer import BeliefStateVisualizer
+    from board_generation import Board
 
     board = Board()
     game = Game()
@@ -48,7 +148,7 @@ def play_visual():
         visualizer.show(engine.belief_state)
         board.update_mrx_position(game.mrx_pos)
 
-        if (game.turn-3) % 5 == 0:
+        if (game.turn - 3) % 5 == 0:
             engine.mrx_is_spotted(game.mrx_pos)
             visualizer.show(engine.belief_state)
 
@@ -57,46 +157,44 @@ def play_visual():
     return game.winner
 
 
-def play():
-    game = Game()
-    engine = DetectiveEngine(game.detectives_pos)
-    mrx = MrxEngine(game, engine)
+def build_arg_parser():
+    parser = argparse.ArgumentParser(description="Run Scotland Yard engine matchups.")
+    parser.add_argument("--games", type=int, default=100)
+    parser.add_argument("--detectives", choices=DETECTIVE_STRATEGIES, default="heuristic")
+    parser.add_argument("--mrx", choices=MRX_STRATEGIES, default="mcts")
+    parser.add_argument("--checkpoint", default=None, help="GNN detective checkpoint path")
+    parser.add_argument("--device", default=None, help="Torch device for GNN detectives")
+    parser.add_argument("--mrx-explorations", type=int, default=None)
+    parser.add_argument("--mrx-simulations", type=int, default=None)
+    parser.add_argument("--verbose", action="store_true")
+    return parser
 
-    while True:
-        if game.check_victory():
-            break
 
-        game_over = False
-        for i in range(game.num_detectives):
-            game.detective_automated_turn(engine.belief_state, i)
-            if game.check_victory():
-                game_over = True
-                break
-            engine.kalman_filter()
-        game.detectives_moves.append(game.detectives_pos[:])
-        if game_over:
-            break
+def main():
+    args = build_arg_parser().parse_args()
+    start = datetime.now()
+    mrx_wins = sum(
+        play(
+            detective_strategy=args.detectives,
+            mrx_strategy=args.mrx,
+            checkpoint=args.checkpoint,
+            device=args.device,
+            mrx_explorations=args.mrx_explorations,
+            mrx_simulations=args.mrx_simulations,
+            silent=not args.verbose,
+        )
+        for _ in range(args.games)
+    )
+    elapsed = datetime.now() - start
 
-        best_pos, best_ticket = mrx.search()
-        game.x_automated_turn(best_pos, best_ticket)
-
-        if game.check_victory():
-            break
-
-        engine.update_belief_after_mrx_move(best_ticket)
-
-        if (game.turn-3) % 5 == 0:
-            engine.mrx_is_spotted(game.mrx_pos)
-
-    return game.winner
+    print(f"Detectives: {args.detectives}")
+    print(f"Mr.X: {args.mrx}")
+    if args.detectives == "gnn":
+        print(f"Checkpoint: {args.checkpoint or 'auto'}")
+    print(f"Time: {elapsed}")
+    print(f"Mr. X wins: {mrx_wins}/{args.games}")
+    print(f"Detectives wins: {args.games - mrx_wins}/{args.games}")
 
 
 if __name__ == "__main__":
-    NUM_GAMES = 100
-
-    start = datetime.now()
-    mrx_wins = sum(play() for _ in range(NUM_GAMES))
-    elapsed = datetime.now() - start
-
-    print(f"Time: {elapsed}")
-    print(f"Mr. X wins: {mrx_wins}/{NUM_GAMES}")
+    main()
