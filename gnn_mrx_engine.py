@@ -20,12 +20,25 @@ REVEAL_TURNS = (3, 8, 13, 18)
 NODE_DYN_DIM = 14
 GLOBAL_FEATURE_DIM = 28
 DEFAULT_CHECKPOINT_PATTERNS = (
+    "Notebook/mrx_rgnn_ppo_best_*.pt",
+    "mrx_rgnn_ppo_best_*.pt",
+    "mrx_ppo_checkpoints/mrx_rgnn_ppo_best_*.pt",
     "Notebook/mrx_rgnn_bc_best_*.pt",
     "mrx_rgnn_bc_best_*.pt",
     "mrx_bc_checkpoints/mrx_rgnn_bc_best_*.pt",
 )
 
 _SP_ANY_NP = SHORTEST_PATH_TENSOR[7, :N_NODES, :N_NODES].astype(np.float32)
+
+
+def resolve_device(device=None):
+    if device is not None:
+        requested = str(device)
+        if requested.startswith("cuda") and not torch.cuda.is_available():
+            print("CUDA requested but unavailable in this Torch build; falling back to CPU.")
+            return torch.device("cpu")
+        return torch.device(requested)
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def is_reveal_turn(turn):
@@ -188,9 +201,7 @@ class GNNMrXEngine:
             raise FileNotFoundError("No Mr.X GNN checkpoint found.")
 
         self.checkpoint_path = os.fspath(checkpoint_path)
-        self.device = torch.device(
-            device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
-        )
+        self.device = resolve_device(device)
         self.dense_adj = torch.from_numpy(build_dense_adj()).to(self.device)
         self.node_static = torch.from_numpy(build_node_static_features()).to(self.device)
 
@@ -218,6 +229,13 @@ class GNNMrXEngine:
                 "val_acc",
                 "val_top3_acc",
                 "train_loss",
+                "update",
+                "gnn_wr",
+                "mrx_wr",
+                "validation_score",
+                "eval",
+                "source_kind",
+                "source_checkpoint",
                 "run_tag",
                 "data_dir",
             )

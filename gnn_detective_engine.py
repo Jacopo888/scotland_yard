@@ -31,6 +31,16 @@ DEFAULT_CHECKPOINT_PATTERNS = (
 _SP_ANY_NP = SHORTEST_PATH_TENSOR[7, :N_NODES, :N_NODES].astype(np.float32)
 
 
+def resolve_device(device=None):
+    if device is not None:
+        requested = str(device)
+        if requested.startswith("cuda") and not torch.cuda.is_available():
+            print("CUDA requested but unavailable in this Torch build; falling back to CPU.")
+            return torch.device("cpu")
+        return torch.device(requested)
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 def turns_to_next_reveal(turn):
     for reveal_turn in REVEAL_TURNS:
         if reveal_turn > turn:
@@ -216,9 +226,7 @@ class GNNDetectiveEngine:
             raise FileNotFoundError("No GNN checkpoint found.")
 
         self.checkpoint_path = os.fspath(checkpoint_path)
-        self.device = torch.device(
-            device if device is not None else ("cuda" if torch.cuda.is_available() else "cpu")
-        )
+        self.device = resolve_device(device)
         self.dense_adj = torch.from_numpy(build_dense_adj()).to(self.device)
         self.node_static = torch.from_numpy(build_node_static_features()).to(self.device)
 
