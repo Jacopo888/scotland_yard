@@ -9,7 +9,7 @@ from mrx_engine import MrxEngine
 
 
 DETECTIVE_STRATEGIES = ("heuristic", "gnn")
-MRX_STRATEGIES = ("mcts", "random")
+MRX_STRATEGIES = ("mcts", "random", "gnn")
 
 
 def configure_mrx_strength(explorations=None, simulations=None):
@@ -23,6 +23,12 @@ def _load_gnn_policy(checkpoint=None, device=None):
     from gnn_detective_engine import GNNDetectiveEngine
 
     return GNNDetectiveEngine(checkpoint_path=checkpoint, device=device)
+
+
+def _load_gnn_mrx_policy(checkpoint=None, device=None):
+    from gnn_mrx_engine import GNNMrXEngine
+
+    return GNNMrXEngine(checkpoint_path=checkpoint, device=device)
 
 
 def _play_detective_phase(game, belief_engine, detective_strategy, gnn_policy=None):
@@ -53,6 +59,8 @@ def _play_mrx_phase(game, belief_engine, mrx_strategy, mrx_policy=None):
         return best_ticket
     if mrx_strategy == "random":
         return game.x_random_turn()
+    if mrx_strategy == "gnn":
+        return mrx_policy.play_mrx_turn(game, belief_engine.belief_state)
     raise ValueError(f"Unsupported Mr.X strategy: {mrx_strategy}")
 
 
@@ -60,6 +68,7 @@ def play(
     detective_strategy="heuristic",
     mrx_strategy="mcts",
     checkpoint=None,
+    mrx_checkpoint=None,
     device=None,
     mrx_explorations=None,
     mrx_simulations=None,
@@ -73,12 +82,18 @@ def play(
     mrx_strategy:
         "mcts" keeps the current Mr.X search engine.
         "random" is a lightweight baseline/debug opponent.
+        "gnn" uses GNNMrXEngine with the selected checkpoint.
     """
     configure_mrx_strength(mrx_explorations, mrx_simulations)
 
     game = Game()
     belief_engine = DetectiveEngine(game.detectives_pos)
-    mrx_policy = MrxEngine(game, belief_engine) if mrx_strategy == "mcts" else None
+    if mrx_strategy == "mcts":
+        mrx_policy = MrxEngine(game, belief_engine)
+    elif mrx_strategy == "gnn":
+        mrx_policy = _load_gnn_mrx_policy(checkpoint=mrx_checkpoint, device=device)
+    else:
+        mrx_policy = None
     gnn_policy = (
         _load_gnn_policy(checkpoint=checkpoint, device=device)
         if detective_strategy == "gnn"
@@ -102,6 +117,8 @@ def play(
 
         if gnn_policy is not None:
             gnn_policy.observe_mrx_move(game, best_ticket)
+        if mrx_strategy == "gnn":
+            mrx_policy.observe_mrx_move(game, best_ticket)
 
     return game.winner
 
@@ -163,7 +180,8 @@ def build_arg_parser():
     parser.add_argument("--detectives", choices=DETECTIVE_STRATEGIES, default="heuristic")
     parser.add_argument("--mrx", choices=MRX_STRATEGIES, default="mcts")
     parser.add_argument("--checkpoint", default=None, help="GNN detective checkpoint path")
-    parser.add_argument("--device", default=None, help="Torch device for GNN detectives")
+    parser.add_argument("--mrx-checkpoint", default=None, help="GNN Mr.X checkpoint path")
+    parser.add_argument("--device", default=None, help="Torch device for GNN engines")
     parser.add_argument("--mrx-explorations", type=int, default=None)
     parser.add_argument("--mrx-simulations", type=int, default=None)
     parser.add_argument("--verbose", action="store_true")
@@ -178,6 +196,7 @@ def main():
             detective_strategy=args.detectives,
             mrx_strategy=args.mrx,
             checkpoint=args.checkpoint,
+            mrx_checkpoint=args.mrx_checkpoint,
             device=args.device,
             mrx_explorations=args.mrx_explorations,
             mrx_simulations=args.mrx_simulations,
@@ -190,7 +209,9 @@ def main():
     print(f"Detectives: {args.detectives}")
     print(f"Mr.X: {args.mrx}")
     if args.detectives == "gnn":
-        print(f"Checkpoint: {args.checkpoint or 'auto'}")
+        print(f"Detective checkpoint: {args.checkpoint or 'auto'}")
+    if args.mrx == "gnn":
+        print(f"Mr.X checkpoint: {args.mrx_checkpoint or 'auto'}")
     print(f"Time: {elapsed}")
     print(f"Mr. X wins: {mrx_wins}/{args.games}")
     print(f"Detectives wins: {args.games - mrx_wins}/{args.games}")
