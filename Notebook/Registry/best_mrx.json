@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-05-21",
+  "best_model_id": "mrx_ppo_v001",
+  "side": "mrx",
+  "path": "Notebook/Models/mrx/mrx_ppo_v001.pt",
+  "status": "best",
+  "promotion_eval": {
+    "large_vs_detective_ppo_v001_mrx_winrate": 0.447,
+    "large_vs_detective_ppo_v001_avg_final_turn": 14.914,
+    "large_vs_heuristic_mrx_winrate": 0.51,
+    "illegal_actions": 0
+  },
+  "next_candidate_prefix": "mrx_ppo_v002",
+  "next_training_notebook": "Notebook/MrX GNN Notebooks/kaggle_mrx_selfplay.ipynb",
+  "notes": "Freeze this model when training detective candidates. Replace only after the Mr.X promotion gate passes."
+}

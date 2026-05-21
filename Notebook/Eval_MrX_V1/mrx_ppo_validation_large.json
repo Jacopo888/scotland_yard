@@ -1,0 +1,136 @@
+{
+  "generated_at": "2026-05-21T10:55:28.062800",
+  "mrx_checkpoint": "C:\\Users\\jacop\\OneDrive\\Desktop\\scotland_yard\\Notebook\\Models\\mrx\\mrx_ppo_v001.pt",
+  "mrx_checkpoint_metadata": {
+    "update": 18,
+    "gnn_wr": 0.54,
+    "mrx_wr": 0.54,
+    "validation_score": 70.53999999999999,
+    "eval": {
+      "n_games": 100,
+      "mrx_wins": 54,
+      "mrx_winrate": 0.54,
+      "avg_final_turn": 16.54,
+      "illegal_actions": 0,
+      "ticket_counts": {
+        "taxi": 1356,
+        "water": 187,
+        "bus": 87,
+        "underground": 24
+      },
+      "avg_min_dist_after_mrx": 3.1825876662636032,
+      "validation_score": 70.53999999999999
+    },
+    "source_kind": "mrx_bc",
+    "source_checkpoint": "/kaggle/working/scotland_yard/Notebook/Models/mrx/mrx_bc_v001.pt",
+    "run_tag": "20260521_075608"
+  },
+  "detective_checkpoint": "C:\\Users\\jacop\\OneDrive\\Desktop\\scotland_yard\\Notebook\\Models\\detectives\\detective_ppo_v001.pt",
+  "detective_checkpoint_metadata": {
+    "update": 10,
+    "gnn_wr": 0.87,
+    "heu_wr": 0.24,
+    "delta_pp": 63.0,
+    "validation_score": 99.0,
+    "fixed_eval": {
+      "fixed_gnn_wr": 0.87,
+      "fixed_heu_wr": 0.24,
+      "fixed_delta_pp": 63.0
+    },
+    "hard_eval": {
+      "hard_gnn_wr": 0.74,
+      "hard_heu_wr": 0.02,
+      "hard_delta_pp": 72.0
+    },
+    "source_kind": "ppo_best",
+    "source_checkpoint": "/kaggle/input/models/jacopodabundo/detective-rgnn/pytorch/default/1/rgnn_ppo_best_20260518_104338.pt"
+  },
+  "suites": {
+    "heuristic_vs_mrx_ppo": {
+      "name": "heuristic_vs_mrx_ppo",
+      "n_games": 1000,
+      "detectives": "heuristic",
+      "mrx": "gnn",
+      "mrx_explorations": null,
+      "mrx_simulations": null,
+      "mrx_wins": 510,
+      "detective_wins": 490,
+      "mrx_winrate": 0.51,
+      "avg_final_turn": 16.6,
+      "illegal_actions": 0,
+      "ticket_counts": {
+        "taxi": 12716,
+        "bus": 1112,
+        "water": 2393,
+        "underground": 379
+      },
+      "avg_min_dist_after_mrx": 2.824238741770785,
+      "avg_gnn_value": -2.0621581522386325
+    },
+    "gnn_detectives_vs_mrx_ppo": {
+      "name": "gnn_detectives_vs_mrx_ppo",
+      "n_games": 1000,
+      "detectives": "gnn",
+      "mrx": "gnn",
+      "mrx_explorations": null,
+      "mrx_simulations": null,
+      "mrx_wins": 447,
+      "detective_wins": 553,
+      "mrx_winrate": 0.447,
+      "avg_final_turn": 14.914,
+      "illegal_actions": 0,
+      "ticket_counts": {
+        "taxi": 12309,
+        "bus": 792,
+        "water": 1559,
+        "underground": 253,
+        "blocked": 1
+      },
+      "avg_min_dist_after_mrx": 2.847821974207423,
+      "avg_gnn_value": -2.3291696993015383
+    },
+    "gnn_detectives_vs_mcts_fixed": {
+      "name": "gnn_detectives_vs_mcts_fixed",
+      "n_games": 300,
+      "detectives": "gnn",
+      "mrx": "mcts",
+      "mrx_explorations": 15,
+      "mrx_simulations": 25,
+      "mrx_wins": 56,
+      "detective_wins": 244,
+      "mrx_winrate": 0.18666666666666668,
+      "avg_final_turn": 9.466666666666667,
+      "illegal_actions": 0,
+      "ticket_counts": {
+        "taxi": 2306,
+        "bus": 343,
+        "water": 141,
+        "underground": 50
+      },
+      "avg_min_dist_after_mrx": 2.2328674227818963,
+      "avg_gnn_value": null
+    },
+    "gnn_detectives_vs_mcts_hard": {
+      "name": "gnn_detectives_vs_mcts_hard",
+      "n_games": 150,
+      "detectives": "gnn",
+      "mrx": "mcts",
+      "mrx_explorations": 30,
+      "mrx_simulations": 50,
+      "mrx_wins": 51,
+      "detective_wins": 99,
+      "mrx_winrate": 0.34,
+      "avg_final_turn": 12.613333333333333,
+      "illegal_actions": 0,
+      "ticket_counts": {
+        "taxi": 1481,
+        "bus": 231,
+        "water": 140,
+        "underground": 40
+      },
+      "avg_min_dist_after_mrx": 2.3584687651529754,
+      "avg_gnn_value": null
+    }
+  },
+  "elapsed_seconds": 2587.75829410553
+}

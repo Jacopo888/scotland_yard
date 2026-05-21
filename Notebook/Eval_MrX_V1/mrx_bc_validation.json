@@ -1,6 +1,6 @@
 {
   "generated_at": "2026-05-21T07:26:09.345821",
-  "mrx_checkpoint": "/kaggle/working/scotland_yard/Notebook/mrx_rgnn_bc_best_20260520_220547.pt",
+  "mrx_checkpoint": "/kaggle/working/scotland_yard/Notebook/Models/mrx/mrx_bc_v001.pt",
   "mrx_checkpoint_metadata": {
     "epoch": 18,
     "val_loss": 1.4132021021470584,
@@ -10,7 +10,7 @@
     "run_tag": "20260520_220547",
     "data_dir": "/kaggle/input/datasets/jacopodabundo/mrxlogged/mrx_bc_logs/mrx_bc_20260520_172335"
   },
-  "detective_checkpoint": "/kaggle/working/scotland_yard/Notebook/rgnn_ppo_best_20260519_132159.pt",
+  "detective_checkpoint": "/kaggle/working/scotland_yard/Notebook/Models/detectives/detective_ppo_v001.pt",
   "detective_checkpoint_metadata": {
     "update": 10,
     "gnn_wr": 0.87,

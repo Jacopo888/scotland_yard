@@ -9,7 +9,7 @@ from mrx_engine import MrxEngine
 
 
 DETECTIVE_STRATEGIES = ("heuristic", "gnn")
-MRX_STRATEGIES = ("mcts", "random", "gnn")
+MRX_STRATEGIES = ("mcts", "random", "gnn", "neural_mcts")
 
 
 def configure_mrx_strength(explorations=None, simulations=None):
@@ -29,6 +29,31 @@ def _load_gnn_mrx_policy(checkpoint=None, device=None):
     from gnn_mrx_engine import GNNMrXEngine
 
     return GNNMrXEngine(checkpoint_path=checkpoint, device=device)
+
+
+def _load_neural_mcts_policy(
+    mrx_checkpoint=None,
+    detective_checkpoint=None,
+    device=None,
+    simulations=None,
+    c_puct=None,
+    temperature=None,
+):
+    from neural_mrx_mcts_engine import NeuralMrXMCTSEngine
+
+    kwargs = {}
+    if simulations is not None:
+        kwargs["num_simulations"] = simulations
+    if c_puct is not None:
+        kwargs["c_puct"] = c_puct
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    return NeuralMrXMCTSEngine(
+        mrx_checkpoint_path=mrx_checkpoint,
+        detective_checkpoint_path=detective_checkpoint,
+        device=device,
+        **kwargs,
+    )
 
 
 def _play_detective_phase(game, belief_engine, detective_strategy, gnn_policy=None):
@@ -61,6 +86,8 @@ def _play_mrx_phase(game, belief_engine, mrx_strategy, mrx_policy=None):
         return game.x_random_turn()
     if mrx_strategy == "gnn":
         return mrx_policy.play_mrx_turn(game, belief_engine.belief_state)
+    if mrx_strategy == "neural_mcts":
+        return mrx_policy.play_mrx_turn(game, belief_engine.belief_state)
     raise ValueError(f"Unsupported Mr.X strategy: {mrx_strategy}")
 
 
@@ -72,6 +99,9 @@ def play(
     device=None,
     mrx_explorations=None,
     mrx_simulations=None,
+    neural_mcts_simulations=None,
+    neural_mcts_c_puct=None,
+    neural_mcts_temperature=None,
     silent=True,
 ):
     """Play one game.
@@ -83,6 +113,7 @@ def play(
         "mcts" keeps the current Mr.X search engine.
         "random" is a lightweight baseline/debug opponent.
         "gnn" uses GNNMrXEngine with the selected checkpoint.
+        "neural_mcts" uses Mr.X GNN priors/value with frozen GNN detective rollouts.
     """
     configure_mrx_strength(mrx_explorations, mrx_simulations)
 
@@ -92,6 +123,15 @@ def play(
         mrx_policy = MrxEngine(game, belief_engine)
     elif mrx_strategy == "gnn":
         mrx_policy = _load_gnn_mrx_policy(checkpoint=mrx_checkpoint, device=device)
+    elif mrx_strategy == "neural_mcts":
+        mrx_policy = _load_neural_mcts_policy(
+            mrx_checkpoint=mrx_checkpoint,
+            detective_checkpoint=checkpoint,
+            device=device,
+            simulations=neural_mcts_simulations,
+            c_puct=neural_mcts_c_puct,
+            temperature=neural_mcts_temperature,
+        )
     else:
         mrx_policy = None
     gnn_policy = (
@@ -117,7 +157,7 @@ def play(
 
         if gnn_policy is not None:
             gnn_policy.observe_mrx_move(game, best_ticket)
-        if mrx_strategy == "gnn":
+        if mrx_strategy in ("gnn", "neural_mcts"):
             mrx_policy.observe_mrx_move(game, best_ticket)
 
     return game.winner
@@ -184,6 +224,9 @@ def build_arg_parser():
     parser.add_argument("--device", default=None, help="Torch device for GNN engines")
     parser.add_argument("--mrx-explorations", type=int, default=None)
     parser.add_argument("--mrx-simulations", type=int, default=None)
+    parser.add_argument("--neural-mcts-simulations", type=int, default=None)
+    parser.add_argument("--neural-mcts-c-puct", type=float, default=None)
+    parser.add_argument("--neural-mcts-temperature", type=float, default=None)
     parser.add_argument("--verbose", action="store_true")
     return parser
 
@@ -200,6 +243,9 @@ def main():
             device=args.device,
             mrx_explorations=args.mrx_explorations,
             mrx_simulations=args.mrx_simulations,
+            neural_mcts_simulations=args.neural_mcts_simulations,
+            neural_mcts_c_puct=args.neural_mcts_c_puct,
+            neural_mcts_temperature=args.neural_mcts_temperature,
             silent=not args.verbose,
         )
         for _ in range(args.games)
@@ -208,10 +254,12 @@ def main():
 
     print(f"Detectives: {args.detectives}")
     print(f"Mr.X: {args.mrx}")
-    if args.detectives == "gnn":
+    if args.detectives == "gnn" or args.mrx == "neural_mcts":
         print(f"Detective checkpoint: {args.checkpoint or 'auto'}")
-    if args.mrx == "gnn":
+    if args.mrx in ("gnn", "neural_mcts"):
         print(f"Mr.X checkpoint: {args.mrx_checkpoint or 'auto'}")
+    if args.mrx == "neural_mcts":
+        print(f"Neural MCTS simulations: {args.neural_mcts_simulations or 'default'}")
     print(f"Time: {elapsed}")
     print(f"Mr. X wins: {mrx_wins}/{args.games}")
     print(f"Detectives wins: {args.games - mrx_wins}/{args.games}")

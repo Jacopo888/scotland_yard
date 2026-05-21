@@ -20,9 +20,13 @@ REVEAL_TURNS = (3, 8, 13, 18)
 NODE_DYN_DIM = 14
 GLOBAL_FEATURE_DIM = 28
 DEFAULT_CHECKPOINT_PATTERNS = (
+    "Notebook/Models/mrx/mrx_ppo_*.pt",
+    "Notebook/Models/mrx/mrx_rgnn_ppo_best_*.pt",
     "Notebook/mrx_rgnn_ppo_best_*.pt",
     "mrx_rgnn_ppo_best_*.pt",
     "mrx_ppo_checkpoints/mrx_rgnn_ppo_best_*.pt",
+    "Notebook/Models/mrx/mrx_bc_*.pt",
+    "Notebook/Models/mrx/mrx_rgnn_bc_best_*.pt",
     "Notebook/mrx_rgnn_bc_best_*.pt",
     "mrx_rgnn_bc_best_*.pt",
     "mrx_bc_checkpoints/mrx_rgnn_bc_best_*.pt",
@@ -54,12 +58,11 @@ def turns_to_next_reveal(turn):
 
 def find_latest_checkpoint(root="."):
     root = Path(root)
-    paths = []
     for pattern in DEFAULT_CHECKPOINT_PATTERNS:
-        paths.extend(glob.glob(str(root / pattern)))
-    if not paths:
-        return None
-    return sorted(set(paths))[-1]
+        paths = sorted(set(glob.glob(str(root / pattern))))
+        if paths:
+            return paths[-1]
+    return None
 
 
 def build_dense_adj():

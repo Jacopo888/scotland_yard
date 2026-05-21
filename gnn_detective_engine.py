@@ -21,9 +21,13 @@ REVEAL_TURNS = (3, 8, 13, 18)
 NODE_DYN_DIM = 1 + 5 + 1 + 1 + 5 + 1
 GLOBAL_FEATURE_DIM = 1 + 1 + 4 + 15 + 5
 DEFAULT_CHECKPOINT_PATTERNS = (
+    "Notebook/Models/detectives/detective_ppo_*.pt",
+    "Notebook/Models/detectives/rgnn_ppo_best_*.pt",
     "Notebook/rgnn_ppo_best_*.pt",
     "rgnn_ppo_best_*.pt",
     "ppo_checkpoints/rgnn_ppo_best_*.pt",
+    "Notebook/Models/detectives/detective_bc_*.pt",
+    "Notebook/Models/detectives/rgnn_bc_best_*.pt",
     "Notebook/rgnn_bc_best_*.pt",
     "rgnn_bc_best_*.pt",
 )
@@ -50,12 +54,11 @@ def turns_to_next_reveal(turn):
 
 def find_latest_checkpoint(root="."):
     root = Path(root)
-    paths = []
     for pattern in DEFAULT_CHECKPOINT_PATTERNS:
-        paths.extend(glob.glob(str(root / pattern)))
-    if not paths:
-        return None
-    return sorted(set(paths))[-1]
+        paths = sorted(set(glob.glob(str(root / pattern))))
+        if paths:
+            return paths[-1]
+    return None
 
 
 def build_dense_adj():

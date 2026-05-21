@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-05-21",
+  "best_model_id": "detective_ppo_v001",
+  "side": "detectives",
+  "path": "Notebook/Models/detectives/detective_ppo_v001.pt",
+  "status": "best",
+  "promotion_eval": {
+    "fixed_15_25_detective_winrate": 0.87,
+    "hard_30_50_detective_winrate": 0.74,
+    "illegal_actions": 0
+  },
+  "next_candidate_prefix": "detective_ppo_v002",
+  "next_training_notebook": "Notebook/Detective GNN Notebooks/kaggle_detective_selfplay.ipynb",
+  "notes": "Freeze this model when training Mr.X candidates. Replace only after the detective promotion gate passes."
+}
