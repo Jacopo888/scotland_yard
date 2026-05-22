@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-05-21",
+  "updated_at": "2026-05-22",
   "notes": [
     "Registry is the source of truth for model identity, lineage, status, evaluation files, and opponent pools.",
     "Promoted checkpoint files live in Notebook/Models/<side>/<model_id>.pt; do not overwrite old promoted versions.",
@@ -14,9 +14,13 @@
       "status": "historical",
       "path": "Notebook/Models/detectives/detective_bc_v001.pt",
       "parent": null,
-      "trained_against": ["mrx_mcts_8_8"],
+      "trained_against": [
+        "mrx_mcts_8_8"
+      ],
       "created_at": "2026-05-18T08:42:05",
-      "eval_files": ["Notebook/Detective GNN Notebooks/colab_warmstart_eval.ipynb"],
+      "eval_files": [
+        "Notebook/Detective GNN Notebooks/colab_warmstart_eval.ipynb"
+      ],
       "metrics": {
         "stage1_weakened_delta_pp": 10.0,
         "stage1_full_delta_pp": 44.0
@@ -30,7 +34,12 @@
       "status": "best",
       "path": "Notebook/Models/detectives/detective_ppo_v001.pt",
       "parent": "detective_bc_v001",
-      "trained_against": ["mrx_mcts_8_8", "mrx_mcts_15_25", "mrx_mcts_25_40", "mrx_mcts_30_50"],
+      "trained_against": [
+        "mrx_mcts_8_8",
+        "mrx_mcts_15_25",
+        "mrx_mcts_25_40",
+        "mrx_mcts_30_50"
+      ],
       "created_at": "2026-05-19T13:21:59",
       "eval_files": [
         "Notebook/Eval_detective_V1 (132159)/final_gnn_validation_smoke.json"
@@ -53,9 +62,13 @@
       "status": "historical",
       "path": "Notebook/Models/mrx/mrx_bc_v001.pt",
       "parent": null,
-      "trained_against": ["detective_ppo_v001"],
+      "trained_against": [
+        "detective_ppo_v001"
+      ],
       "created_at": "2026-05-20T22:05:47",
-      "eval_files": ["Notebook/Eval_MrX_V1/mrx_bc_validation.json"],
+      "eval_files": [
+        "Notebook/Eval_MrX_V1/mrx_bc_validation.json"
+      ],
       "metrics": {
         "val_loss": 1.4132021021470584,
         "val_acc": 0.4309835373575348,
@@ -71,10 +84,12 @@
       "id": "mrx_ppo_v001",
       "side": "mrx",
       "kind": "ppo",
-      "status": "best",
+      "status": "historical",
       "path": "Notebook/Models/mrx/mrx_ppo_v001.pt",
       "parent": "mrx_bc_v001",
-      "trained_against": ["detective_ppo_v001"],
+      "trained_against": [
+        "detective_ppo_v001"
+      ],
       "created_at": "2026-05-21T07:56:08",
       "eval_files": [
         "Notebook/Eval_MrX_V1/mrx_ppo_validation_large.json",
@@ -92,6 +107,44 @@
         "validation_score": 70.53999999999999
       },
       "notes": "Current Mr.X best. Large validation should be treated as the publishable number, not the 100-game internal eval."
+    },
+    {
+      "id": "mrx_sl_v001",
+      "side": "mrx",
+      "kind": "sl",
+      "status": "best",
+      "path": "Notebook\\Models\\mrx\\mrx_sl_v001.pt",
+      "parent": "mrx_ppo_v001",
+      "trained_against": [
+        "neural_mcts_teacher",
+        "detective_best"
+      ],
+      "eval_files": [
+        "kaggle_outputs\\jacopodabundo__sy-league-20260522111006-03-promote-mrx\\promotion_mrx\\promotion_result.json"
+      ],
+      "metrics": {
+        "val_loss": 0.9763895111065715,
+        "val_acc": 0.8711685823754789,
+        "val_top3_acc": 0.9971264367816092,
+        "n_samples": 41763,
+        "elapsed_seconds": 120.08693885803223,
+        "promotion_result": true,
+        "improvement_pp": 7.95555555555556,
+        "candidate_mean_score": 0.6017777777777779,
+        "baseline_mean_score": 0.5222222222222223,
+        "candidate_illegal_actions_reported": 0,
+        "vs_heuristic_mrx_winrate": 0.544,
+        "vs_heuristic_baseline_mrx_winrate": 0.5,
+        "vs_heuristic_delta_pp": 4.400000000000004,
+        "vs_detective_bc_v001_mrx_winrate": 0.6833333333333333,
+        "vs_detective_bc_v001_baseline_mrx_winrate": 0.6166666666666667,
+        "vs_detective_bc_v001_delta_pp": 6.666666666666665,
+        "vs_detective_ppo_v001_mrx_winrate": 0.578,
+        "vs_detective_ppo_v001_baseline_mrx_winrate": 0.45,
+        "vs_detective_ppo_v001_delta_pp": 12.799999999999995
+      },
+      "promoted_at": "2026-05-22",
+      "promotion_source_checkpoint": "kaggle_outputs\\jacopodabundo__sy-league-20260522111006-02-train-mrx\\mrx_sl_checkpoints\\mrx_sl_20260522_135205\\mrx_sl_v001.pt"
     }
   ],
   "virtual_baselines": [
@@ -116,7 +169,10 @@
       "side": "mrx",
       "kind": "mcts",
       "status": "baseline",
-      "config": {"explorations": 8, "simulations": 8},
+      "config": {
+        "explorations": 8,
+        "simulations": 8
+      },
       "path": "mrx_engine.py::MrxEngine"
     },
     {
@@ -124,7 +180,10 @@
       "side": "mrx",
       "kind": "mcts",
       "status": "baseline",
-      "config": {"explorations": 15, "simulations": 25},
+      "config": {
+        "explorations": 15,
+        "simulations": 25
+      },
       "path": "mrx_engine.py::MrxEngine"
     },
     {
@@ -132,7 +191,10 @@
       "side": "mrx",
       "kind": "mcts",
       "status": "baseline",
-      "config": {"explorations": 25, "simulations": 40},
+      "config": {
+        "explorations": 25,
+        "simulations": 40
+      },
       "path": "mrx_engine.py::MrxEngine"
     },
     {
@@ -140,7 +202,10 @@
       "side": "mrx",
       "kind": "mcts",
       "status": "baseline",
-      "config": {"explorations": 30, "simulations": 50},
+      "config": {
+        "explorations": 30,
+        "simulations": 50
+      },
       "path": "mrx_engine.py::MrxEngine"
     },
     {
@@ -148,7 +213,10 @@
       "side": "mrx",
       "kind": "mcts",
       "status": "baseline",
-      "config": {"explorations": 50, "simulations": 80},
+      "config": {
+        "explorations": 50,
+        "simulations": 80
+      },
       "path": "mrx_engine.py::MrxEngine"
     }
   ]

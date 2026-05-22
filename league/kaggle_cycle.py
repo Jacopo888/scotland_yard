@@ -368,10 +368,14 @@ def prepare_promote_detective_kernel(args, owner, slug, kernel_sources):
     )
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
 candidate = newest(['/kaggle/input/**/detective_ppo_*.pt'], exclude=('last',))
+if not candidate:
+    candidate = newest(['/kaggle/input/**/detective_ppo_*_last.pt'])
 baseline = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
 if not candidate:
     raise SystemExit('Missing detective candidate checkpoint in kernel sources')
 candidate_id = Path(candidate).stem
+if candidate_id.endswith('_last'):
+    candidate_id = candidate_id[:-5]
 out_dir = Path('/kaggle/working/promotion_detective')
 out_dir.mkdir(parents=True, exist_ok=True)
 cmd = [
