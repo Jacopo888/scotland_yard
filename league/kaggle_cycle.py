@@ -117,7 +117,7 @@ import sys
 from pathlib import Path
 
 subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'networkx', 'numpy', 'pandas', 'pyarrow', 'tqdm', 'scipy', 'matplotlib', 'torch'], check=False)
-repo = Path('/kaggle/working/scotland_yard')
+repo = Path('/tmp/scotland_yard')
 if not repo.exists():
     subprocess.run(['git', 'clone', '--depth', '1', {repo_url!r}, str(repo)], check=True)
 {checkout}os.chdir(repo)
@@ -154,7 +154,10 @@ def _push_kernel(folder, accelerator=None, timeout=None):
 def _status(kernel):
     result = _run(["kaggle", "kernels", "status", kernel], check=False)
     match = re.search(r'has status "([^"]+)"', result.stdout or "")
-    return match.group(1).lower() if match else "unknown"
+    if not match:
+        return "unknown"
+    status = match.group(1).lower()
+    return status.rsplit(".", 1)[-1]
 
 
 def _wait(kernel, poll_seconds):
@@ -168,13 +171,21 @@ def _wait(kernel, poll_seconds):
         time.sleep(poll_seconds)
 
 
-def _download(kernel, output_root, force=True):
+def _download(kernel, output_root, force=True, attempts=3):
     target = Path(output_root) / kernel.replace("/", "__")
     target.mkdir(parents=True, exist_ok=True)
     cmd = ["kaggle", "kernels", "output", kernel, "-p", target]
     if force:
         cmd.append("--force")
-    _run(cmd)
+    for attempt in range(1, attempts + 1):
+        try:
+            _run(cmd)
+            break
+        except subprocess.CalledProcessError:
+            if attempt == attempts:
+                raise
+            print(f"Download failed for {kernel}; retrying ({attempt + 1}/{attempts})...")
+            time.sleep(10 * attempt)
     return target
 
 
@@ -221,7 +232,8 @@ if mrx_ckpt:
     cmd += ['--mrx-checkpoint', mrx_ckpt]
 if det_ckpt:
     cmd += ['--detective-checkpoint', det_ckpt]
-print('Running:', ' '.join(map(str, cmd)))
+cmd = [str(x) for x in cmd]
+print('Running:', ' '.join(cmd))
 subprocess.run(cmd, check=True)
 """
     _write_kernel(folder, metadata, source)
@@ -252,7 +264,8 @@ if data_dir:
     cmd += ['--data-dir', data_dir]
 if parent:
     cmd += ['--parent-checkpoint', parent]
-print('Running:', ' '.join(map(str, cmd)))
+cmd = [str(x) for x in cmd]
+print('Running:', ' '.join(cmd))
 subprocess.run(cmd, check=True)
 """
     _write_kernel(folder, metadata, source)
@@ -295,7 +308,8 @@ cmd = [
 ]
 if baseline:
     cmd += ['--baseline-checkpoint', baseline]
-{max_games_line}print('Running:', ' '.join(map(str, cmd)))
+{max_games_line}cmd = [str(x) for x in cmd]
+print('Running:', ' '.join(cmd))
 subprocess.run(cmd, check=True)
 """
     _write_kernel(folder, metadata, source)
@@ -328,7 +342,8 @@ if mrx_candidate:
     cmd += ['--mrx-checkpoint', mrx_candidate]
 if det_parent:
     cmd += ['--detective-checkpoint', det_parent]
-print('Running:', ' '.join(map(str, cmd)))
+cmd = [str(x) for x in cmd]
+print('Running:', ' '.join(cmd))
 subprocess.run(cmd, check=True)
 """
     _write_kernel(folder, metadata, source)
@@ -371,7 +386,8 @@ cmd = [
 ]
 if baseline and baseline != candidate:
     cmd += ['--baseline-checkpoint', baseline]
-{max_games_line}print('Running:', ' '.join(map(str, cmd)))
+{max_games_line}cmd = [str(x) for x in cmd]
+print('Running:', ' '.join(cmd))
 subprocess.run(cmd, check=True)
 """
     _write_kernel(folder, metadata, source)
