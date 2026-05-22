@@ -20,11 +20,13 @@ REVEAL_TURNS = (3, 8, 13, 18)
 NODE_DYN_DIM = 14
 GLOBAL_FEATURE_DIM = 28
 DEFAULT_CHECKPOINT_PATTERNS = (
+    "Notebook/Models/mrx/mrx_sl_*.pt",
     "Notebook/Models/mrx/mrx_ppo_*.pt",
     "Notebook/Models/mrx/mrx_rgnn_ppo_best_*.pt",
     "Notebook/mrx_rgnn_ppo_best_*.pt",
     "mrx_rgnn_ppo_best_*.pt",
     "mrx_ppo_checkpoints/mrx_rgnn_ppo_best_*.pt",
+    "mrx_sl_checkpoints/mrx_sl_*.pt",
     "Notebook/Models/mrx/mrx_bc_*.pt",
     "Notebook/Models/mrx/mrx_rgnn_bc_best_*.pt",
     "Notebook/mrx_rgnn_bc_best_*.pt",
@@ -58,6 +60,15 @@ def turns_to_next_reveal(turn):
 
 def find_latest_checkpoint(root="."):
     root = Path(root)
+    try:
+        from model_registry import get_best, resolve_path
+
+        best = get_best("mrx", root=root)
+        path = Path(resolve_path(best["id"], root=root))
+        if path.exists():
+            return str(path)
+    except Exception:
+        pass
     for pattern in DEFAULT_CHECKPOINT_PATTERNS:
         paths = sorted(set(glob.glob(str(root / pattern))))
         if paths:

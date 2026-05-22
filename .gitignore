@@ -4,3 +4,5 @@ colab_warmstart_logger.ipynb
 colab_warmstart_train.ipynb
 DESIGN.md
 video_analytics
+.kaggle_cycle/
+kaggle_outputs/

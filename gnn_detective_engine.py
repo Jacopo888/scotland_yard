@@ -54,6 +54,15 @@ def turns_to_next_reveal(turn):
 
 def find_latest_checkpoint(root="."):
     root = Path(root)
+    try:
+        from model_registry import get_best, resolve_path
+
+        best = get_best("detectives", root=root)
+        path = Path(resolve_path(best["id"], root=root))
+        if path.exists():
+            return str(path)
+    except Exception:
+        pass
     for pattern in DEFAULT_CHECKPOINT_PATTERNS:
         paths = sorted(set(glob.glob(str(root / pattern))))
         if paths:
