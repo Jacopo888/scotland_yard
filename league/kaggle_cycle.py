@@ -317,7 +317,7 @@ subprocess.run(cmd, check=True)
 
 
 def prepare_train_detective_kernel(args, owner, slug, kernel_sources):
-    folder = _kernel_folder(args.work_dir, "04_train_detective")
+    folder = _kernel_folder(args.work_dir, "06_train_detective")
     metadata = _metadata(
         owner=owner,
         slug=slug,
@@ -328,7 +328,9 @@ def prepare_train_detective_kernel(args, owner, slug, kernel_sources):
     )
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
 mrx_candidate = newest(['/kaggle/input/**/mrx_sl_*.pt', '/kaggle/input/**/mrx_ppo_*.pt'], exclude=('last',))
-det_parent = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
+det_parent = newest(['/kaggle/input/**/detective_sl_*.pt'], exclude=('last',))
+if not det_parent:
+    det_parent = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
 cmd = [
     sys.executable, 'league/train_detective_rl_vs_latest_mrx.py',
     '--updates', {args.detective_updates!r},
@@ -352,8 +354,81 @@ subprocess.run(cmd, check=True)
     return folder
 
 
+def prepare_log_detective_kernel(args, owner, slug, kernel_sources):
+    folder = _kernel_folder(args.work_dir, "04_log_detective")
+    metadata = _metadata(
+        owner=owner,
+        slug=slug,
+        title=slug,
+        code_file="run_log_detective.py",
+        kernel_sources=kernel_sources,
+        enable_gpu=bool(args.detective_log_accelerator),
+    )
+    device = "cuda" if args.detective_log_accelerator else "cpu"
+    source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
+mrx_candidate = newest(['/kaggle/input/**/mrx_sl_*.pt', '/kaggle/input/**/mrx_ppo_*.pt'], exclude=('last',))
+det_parent = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
+cmd = [
+    sys.executable, 'league/detective_mcts_logger.py',
+    '--games', {args.detective_log_games!r},
+    '--simulations', {args.detective_mcts_simulations!r},
+    '--rollout-turns', {args.detective_mcts_rollout_turns!r},
+    '--exploration-c', {args.detective_mcts_exploration_c!r},
+    '--temperature', {args.detective_mcts_temperature!r},
+    '--opponent-pool', {args.detective_opponent_pool!r},
+    '--primary-mrx-weight', {args.detective_primary_mrx_weight!r},
+    '--pool-mrx-weight', {args.detective_pool_mrx_weight!r},
+    '--device', {device!r},
+    '--output-dir', '/kaggle/working/detective_mcts_logs',
+    '--games-per-part', {args.detective_log_games_per_part!r},
+    '--log-every', {args.detective_log_every!r},
+]
+if mrx_candidate:
+    cmd += ['--mrx-checkpoint', mrx_candidate]
+if det_parent:
+    cmd += ['--detective-checkpoint', det_parent]
+cmd = [str(x) for x in cmd]
+print('Running:', ' '.join(cmd))
+subprocess.run(cmd, check=True)
+"""
+    _write_kernel(folder, metadata, source)
+    return folder
+
+
+def prepare_train_detective_sl_kernel(args, owner, slug, kernel_sources):
+    folder = _kernel_folder(args.work_dir, "05_train_detective_sl")
+    metadata = _metadata(
+        owner=owner,
+        slug=slug,
+        title=slug,
+        code_file="run_train_detective_sl.py",
+        kernel_sources=kernel_sources,
+        enable_gpu=True,
+    )
+    source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
+data_dir = newest(['/kaggle/input/**/detective_mcts_logs_*'])
+parent = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
+cmd = [
+    sys.executable, 'league/train_detective_sl.py',
+    '--epochs', {args.detective_sl_epochs!r},
+    '--batch-size', {args.detective_sl_batch_size!r},
+    '--device', 'cuda',
+    '--output-dir', '/kaggle/working/detective_sl_checkpoints',
+]
+if data_dir:
+    cmd += ['--data-dir', data_dir]
+if parent:
+    cmd += ['--parent-checkpoint', parent]
+cmd = [str(x) for x in cmd]
+print('Running:', ' '.join(cmd))
+subprocess.run(cmd, check=True)
+"""
+    _write_kernel(folder, metadata, source)
+    return folder
+
+
 def prepare_promote_detective_kernel(args, owner, slug, kernel_sources):
-    folder = _kernel_folder(args.work_dir, "05_promote_detective")
+    folder = _kernel_folder(args.work_dir, "07_promote_detective")
     metadata = _metadata(
         owner=owner,
         slug=slug,
@@ -371,7 +446,9 @@ def prepare_promote_detective_kernel(args, owner, slug, kernel_sources):
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
 candidate = newest(['/kaggle/input/**/detective_ppo_*.pt'], exclude=('last',))
 if not candidate:
-    candidate = newest(['/kaggle/input/**/detective_ppo_*_last.pt'])
+    candidate = newest(['/kaggle/input/**/detective_sl_*.pt'], exclude=('last',))
+if not candidate:
+    candidate = newest(['/kaggle/input/**/detective_ppo_*_last.pt', '/kaggle/input/**/detective_sl_*_last.pt'])
 baseline = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
 if not candidate:
     raise SystemExit('Missing detective candidate checkpoint in kernel sources')
@@ -424,6 +501,94 @@ def _apply_if_passed(side, train_output, promotion_output, force=False):
     result = apply_promotion(candidate_update, promotion_result, force=force)
     print(json.dumps(result, indent=2))
     return result
+
+
+def _run_detective_branch(args, state, prefix, run_record, base_sources, start_index):
+    log_det_slug = _slugify(f"{prefix}-{start_index:02d}-log-det")
+    log_det_folder = prepare_log_detective_kernel(
+        args,
+        args.owner,
+        log_det_slug,
+        base_sources,
+    )
+    log_det_kernel, _ = _run_stage(
+        args,
+        "log_detective",
+        log_det_slug,
+        log_det_folder,
+        accelerator=args.detective_log_accelerator,
+        timeout=args.detective_log_timeout,
+    )
+    run_record["stages"]["log_detective"] = log_det_kernel
+
+    train_det_sl_slug = _slugify(f"{prefix}-{start_index + 1:02d}-train-det-sl")
+    train_det_sl_sources = [log_det_kernel]
+    if state.get("best_detective_kernel"):
+        train_det_sl_sources.append(state["best_detective_kernel"])
+    train_det_sl_folder = prepare_train_detective_sl_kernel(
+        args,
+        args.owner,
+        train_det_sl_slug,
+        train_det_sl_sources,
+    )
+    train_det_sl_kernel, train_det_sl_output = _run_stage(
+        args,
+        "train_detective_sl",
+        train_det_sl_slug,
+        train_det_sl_folder,
+        accelerator=args.gpu_accelerator,
+        timeout=args.train_timeout,
+    )
+    run_record["stages"]["train_detective_sl"] = train_det_sl_kernel
+
+    candidate_det_kernel = train_det_sl_kernel
+    candidate_det_output = train_det_sl_output
+    next_index = start_index + 2
+
+    if not args.skip_detective_ppo:
+        train_det_slug = _slugify(f"{prefix}-{next_index:02d}-train-det")
+        train_det_sources = [train_det_sl_kernel] + [
+            source for source in base_sources if source != train_det_sl_kernel
+        ]
+        train_det_folder = prepare_train_detective_kernel(
+            args,
+            args.owner,
+            train_det_slug,
+            train_det_sources,
+        )
+        train_det_kernel, train_det_output = _run_stage(
+            args,
+            "train_detective",
+            train_det_slug,
+            train_det_folder,
+            accelerator=args.gpu_accelerator,
+            timeout=args.train_timeout,
+        )
+        run_record["stages"]["train_detective"] = train_det_kernel
+        candidate_det_kernel = train_det_kernel
+        candidate_det_output = train_det_output
+        next_index += 1
+
+    promote_det_slug = _slugify(f"{prefix}-{next_index:02d}-promote-det")
+    promote_det_sources = [candidate_det_kernel]
+    if state.get("best_detective_kernel"):
+        promote_det_sources.append(state["best_detective_kernel"])
+    promote_det_folder = prepare_promote_detective_kernel(
+        args,
+        args.owner,
+        promote_det_slug,
+        promote_det_sources,
+    )
+    promote_det_kernel, promote_det_output = _run_stage(
+        args,
+        "promote_detective",
+        promote_det_slug,
+        promote_det_folder,
+        accelerator=args.promotion_accelerator,
+        timeout=args.promotion_timeout,
+    )
+    run_record["stages"]["promote_detective"] = promote_det_kernel
+    return candidate_det_kernel, candidate_det_output, promote_det_output
 
 
 def run_once(args):
@@ -506,54 +671,26 @@ def run_once(args):
     state["best_mrx_kernel"] = train_mrx_kernel
     _save_state(args.state, state)
 
-    train_det_slug = _slugify(f"{prefix}-04-train-det")
-    train_det_sources = [train_mrx_kernel]
+    detective_sources = [train_mrx_kernel]
     if state.get("best_detective_kernel"):
-        train_det_sources.append(state["best_detective_kernel"])
-    train_det_folder = prepare_train_detective_kernel(
+        detective_sources.append(state["best_detective_kernel"])
+    candidate_det_kernel, candidate_det_output, promote_det_output = _run_detective_branch(
         args,
-        args.owner,
-        train_det_slug,
-        train_det_sources,
+        state,
+        prefix,
+        run_record,
+        detective_sources,
+        start_index=4,
     )
-    train_det_kernel, train_det_output = _run_stage(
-        args,
-        "train_detective",
-        train_det_slug,
-        train_det_folder,
-        accelerator=args.gpu_accelerator,
-        timeout=args.train_timeout,
-    )
-    run_record["stages"]["train_detective"] = train_det_kernel
-
-    promote_det_slug = _slugify(f"{prefix}-05-promote-det")
-    promote_det_sources = [train_det_kernel]
-    if state.get("best_detective_kernel"):
-        promote_det_sources.append(state["best_detective_kernel"])
-    promote_det_folder = prepare_promote_detective_kernel(
-        args,
-        args.owner,
-        promote_det_slug,
-        promote_det_sources,
-    )
-    promote_det_kernel, promote_det_output = _run_stage(
-        args,
-        "promote_detective",
-        promote_det_slug,
-        promote_det_folder,
-        accelerator=args.promotion_accelerator,
-        timeout=args.promotion_timeout,
-    )
-    run_record["stages"]["promote_detective"] = promote_det_kernel
 
     det_apply = _apply_if_passed(
         "detectives",
-        train_output=train_det_output,
+        train_output=candidate_det_output,
         promotion_output=promote_det_output,
         force=args.force_apply,
     )
     if det_apply:
-        state["best_detective_kernel"] = train_det_kernel
+        state["best_detective_kernel"] = candidate_det_kernel
     else:
         print("Detective candidate was not promoted.")
 
@@ -569,48 +706,19 @@ def run_detective_only(args):
     prefix = _slugify(f"{args.slug_prefix}-{run_tag}")
     run_record = {"run_tag": run_tag, "mode": "detective_only", "stages": {}}
 
-    train_det_sources = []
-    if state.get("best_mrx_kernel"):
-        train_det_sources.append(state["best_mrx_kernel"])
-    if state.get("best_detective_kernel"):
-        train_det_sources.append(state["best_detective_kernel"])
-
-    train_det_slug = _slugify(f"{prefix}-01-train-det")
-    train_det_folder = prepare_train_detective_kernel(
+    detective_sources = [
+        k
+        for k in (state.get("best_mrx_kernel"), state.get("best_detective_kernel"))
+        if k
+    ]
+    candidate_det_kernel, candidate_det_output, promote_det_output = _run_detective_branch(
         args,
-        args.owner,
-        train_det_slug,
-        train_det_sources,
+        state,
+        prefix,
+        run_record,
+        detective_sources,
+        start_index=1,
     )
-    train_det_kernel, train_det_output = _run_stage(
-        args,
-        "train_detective",
-        train_det_slug,
-        train_det_folder,
-        accelerator=args.gpu_accelerator,
-        timeout=args.train_timeout,
-    )
-    run_record["stages"]["train_detective"] = train_det_kernel
-
-    promote_det_slug = _slugify(f"{prefix}-02-promote-det")
-    promote_det_sources = [train_det_kernel]
-    if state.get("best_detective_kernel"):
-        promote_det_sources.append(state["best_detective_kernel"])
-    promote_det_folder = prepare_promote_detective_kernel(
-        args,
-        args.owner,
-        promote_det_slug,
-        promote_det_sources,
-    )
-    promote_det_kernel, promote_det_output = _run_stage(
-        args,
-        "promote_detective",
-        promote_det_slug,
-        promote_det_folder,
-        accelerator=args.promotion_accelerator,
-        timeout=args.promotion_timeout,
-    )
-    run_record["stages"]["promote_detective"] = promote_det_kernel
 
     if args.prepare_only:
         state["runs"].append(run_record)
@@ -619,12 +727,12 @@ def run_detective_only(args):
 
     det_apply = _apply_if_passed(
         "detectives",
-        train_output=train_det_output,
+        train_output=candidate_det_output,
         promotion_output=promote_det_output,
         force=args.force_apply,
     )
     if det_apply:
-        state["best_detective_kernel"] = train_det_kernel
+        state["best_detective_kernel"] = candidate_det_kernel
     else:
         print("Detective candidate was not promoted.")
 
@@ -651,8 +759,10 @@ def build_parser():
 
     parser.add_argument("--gpu-accelerator", default=DEFAULT_GPU_ACCELERATOR)
     parser.add_argument("--log-accelerator", default=None)
+    parser.add_argument("--detective-log-accelerator", default=None)
     parser.add_argument("--promotion-accelerator", default=None)
     parser.add_argument("--log-timeout", type=int, default=None)
+    parser.add_argument("--detective-log-timeout", type=int, default=None)
     parser.add_argument("--train-timeout", type=int, default=None)
     parser.add_argument("--promotion-timeout", type=int, default=None)
 
@@ -663,12 +773,22 @@ def build_parser():
 
     parser.add_argument("--mrx-sl-epochs", type=int, default=12)
     parser.add_argument("--mrx-sl-batch-size", type=int, default=256)
+    parser.add_argument("--detective-log-games", type=int, default=500)
+    parser.add_argument("--detective-log-games-per-part", type=int, default=50)
+    parser.add_argument("--detective-log-every", type=int, default=10)
+    parser.add_argument("--detective-mcts-simulations", type=int, default=32)
+    parser.add_argument("--detective-mcts-rollout-turns", type=int, default=3)
+    parser.add_argument("--detective-mcts-exploration-c", type=float, default=1.35)
+    parser.add_argument("--detective-mcts-temperature", type=float, default=1.0)
+    parser.add_argument("--detective-sl-epochs", type=int, default=8)
+    parser.add_argument("--detective-sl-batch-size", type=int, default=128)
     parser.add_argument("--detective-updates", type=int, default=60)
     parser.add_argument("--detective-games-per-update", type=int, default=32)
     parser.add_argument("--detective-eval-games", type=int, default=100)
     parser.add_argument("--detective-opponent-pool", default="detective_training_mrx_pool_v1")
     parser.add_argument("--detective-primary-mrx-weight", type=float, default=0.5)
     parser.add_argument("--detective-pool-mrx-weight", type=float, default=0.5)
+    parser.add_argument("--skip-detective-ppo", action="store_true")
 
     parser.add_argument("--promotion-games-scale", type=float, default=1.0)
     parser.add_argument("--promotion-max-games", type=int, default=None)
