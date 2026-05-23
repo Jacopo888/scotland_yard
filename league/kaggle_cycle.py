@@ -334,9 +334,11 @@ cmd = [
     '--updates', {args.detective_updates!r},
     '--games-per-update', {args.detective_games_per_update!r},
     '--eval-games', {args.detective_eval_games!r},
+    '--opponent-pool', {args.detective_opponent_pool!r},
+    '--primary-mrx-weight', {args.detective_primary_mrx_weight!r},
+    '--pool-mrx-weight', {args.detective_pool_mrx_weight!r},
     '--device', 'cuda',
     '--output-dir', '/kaggle/working/detective_rl_checkpoints',
-    '--stop-on-improvement',
 ]
 if mrx_candidate:
     cmd += ['--mrx-checkpoint', mrx_candidate]
@@ -590,9 +592,12 @@ def build_parser():
 
     parser.add_argument("--mrx-sl-epochs", type=int, default=12)
     parser.add_argument("--mrx-sl-batch-size", type=int, default=256)
-    parser.add_argument("--detective-updates", type=int, default=20)
-    parser.add_argument("--detective-games-per-update", type=int, default=16)
-    parser.add_argument("--detective-eval-games", type=int, default=50)
+    parser.add_argument("--detective-updates", type=int, default=60)
+    parser.add_argument("--detective-games-per-update", type=int, default=32)
+    parser.add_argument("--detective-eval-games", type=int, default=100)
+    parser.add_argument("--detective-opponent-pool", default="detective_training_mrx_pool_v1")
+    parser.add_argument("--detective-primary-mrx-weight", type=float, default=0.5)
+    parser.add_argument("--detective-pool-mrx-weight", type=float, default=0.5)
 
     parser.add_argument("--promotion-games-scale", type=float, default=1.0)
     parser.add_argument("--promotion-max-games", type=int, default=None)

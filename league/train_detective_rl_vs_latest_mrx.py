@@ -15,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import mrx_engine
 from detective_engine import DetectiveEngine
 from game import Game
 from gnn_detective_engine import GNNDetectiveEngine
@@ -22,12 +23,15 @@ from gnn_mrx_engine import GNNMrXEngine
 from league.common import (
     best_model,
     ensure_project_root,
+    load_pool,
     next_candidate,
     now_tag,
     seed_everything,
     write_candidate_update,
     write_json,
 )
+from model_registry import get_entry, resolve_path
+from mrx_engine import MrxEngine
 from utility import _min_detective_distance
 
 
@@ -36,6 +40,163 @@ R_CAPTURE = 10.0
 R_TIMEOUT = -10.0
 R_STEP = -0.05
 R_DIST_COEF = -0.10
+
+
+class RandomMrXPolicy:
+    def reset(self):
+        return None
+
+    def observe_mrx_move(self, game, ticket):
+        return None
+
+    def play_mrx_turn(self, game, belief_state):
+        return game.x_random_turn()
+
+
+class MCTSMrXPolicy:
+    def __init__(self, explorations, simulations):
+        self.explorations = int(explorations)
+        self.simulations = int(simulations)
+
+    def reset(self):
+        return None
+
+    def observe_mrx_move(self, game, ticket):
+        return None
+
+    def play_mrx_turn(self, game, belief_state):
+        old_explorations = mrx_engine.NUM_EXPLORATIONS
+        old_simulations = mrx_engine.NUM_SIMULATIONS
+        try:
+            mrx_engine.NUM_EXPLORATIONS = self.explorations
+            mrx_engine.NUM_SIMULATIONS = self.simulations
+            engine = DetectiveEngine(
+                game.detectives_pos,
+                belief_state.copy(),
+                skip_filter=True,
+            )
+            destination, ticket = MrxEngine(game, engine).search()
+            game.x_automated_turn(destination, ticket)
+            return "blocked" if ticket is None else ticket
+        finally:
+            mrx_engine.NUM_EXPLORATIONS = old_explorations
+            mrx_engine.NUM_SIMULATIONS = old_simulations
+
+
+def _candidate_id_from_checkpoint(path):
+    stem = Path(path).stem
+    return stem[:-5] if stem.endswith("_last") else stem
+
+
+def _registry_mrx_plan(opponent_id, root):
+    entry = get_entry(opponent_id, root=root)
+    kind = entry.get("kind")
+    if opponent_id == "mrx_random":
+        return {"opponent_id": opponent_id, "strategy": "random"}
+    if kind == "mcts":
+        config = entry.get("config", {})
+        return {
+            "opponent_id": opponent_id,
+            "strategy": "mcts",
+            "explorations": int(config["explorations"]),
+            "simulations": int(config["simulations"]),
+        }
+    return {
+        "opponent_id": opponent_id,
+        "strategy": "gnn",
+        "checkpoint": resolve_path(opponent_id, root=root),
+    }
+
+
+def _training_opponent_plans(args, mrx_checkpoint, mrx_opponent):
+    weighted = []
+    if args.primary_mrx_weight > 0:
+        opponent_id = (
+            args.mrx_opponent_id
+            or (_candidate_id_from_checkpoint(mrx_checkpoint) if args.mrx_checkpoint else mrx_opponent["id"])
+        )
+        weighted.append(
+            (
+                {
+                    "opponent_id": opponent_id,
+                    "strategy": "gnn",
+                    "checkpoint": mrx_checkpoint,
+                    "role": "primary",
+                },
+                float(args.primary_mrx_weight),
+            )
+        )
+
+    if args.opponent_pool and args.pool_mrx_weight > 0:
+        pool = load_pool(args.opponent_pool, root=args.root)
+        for row in pool.get("sample_weights", []):
+            plan = _registry_mrx_plan(row["opponent_id"], root=args.root)
+            plan["role"] = args.opponent_pool
+            weighted.append((plan, float(row["weight"]) * float(args.pool_mrx_weight)))
+
+    weighted = [(plan, weight) for plan, weight in weighted if weight > 0]
+    if not weighted:
+        weighted.append(
+            (
+                {
+                    "opponent_id": mrx_opponent["id"],
+                    "strategy": "gnn",
+                    "checkpoint": mrx_checkpoint,
+                    "role": "fallback",
+                },
+                1.0,
+            )
+        )
+    total = sum(weight for _, weight in weighted)
+    plans = [plan for plan, _ in weighted]
+    weights = np.array([weight / total for _, weight in weighted], dtype=np.float64)
+    return plans, weights
+
+
+def _make_mrx_policy(plan, device):
+    strategy = plan["strategy"]
+    if strategy == "gnn":
+        return GNNMrXEngine(checkpoint_path=plan["checkpoint"], device=device)
+    if strategy == "random":
+        return RandomMrXPolicy()
+    if strategy == "mcts":
+        return MCTSMrXPolicy(
+            explorations=plan["explorations"],
+            simulations=plan["simulations"],
+        )
+    raise ValueError(f"Unsupported Mr.X opponent strategy: {strategy}")
+
+
+def _policy_for_plan(plan, cache, device):
+    key = json.dumps(plan, sort_keys=True)
+    if key not in cache:
+        cache[key] = _make_mrx_policy(plan, device=device)
+    return cache[key]
+
+
+def _opponent_mix_summary(plans, weights):
+    return {
+        plan["opponent_id"]: {
+            "weight": float(weight),
+            "strategy": plan["strategy"],
+            "role": plan.get("role"),
+        }
+        for plan, weight in zip(plans, weights)
+    }
+
+
+def _rollout_opponent_stats(episode_stats):
+    counts = Counter(stat["opponent_id"] for stat in episode_stats)
+    wins = Counter(
+        stat["opponent_id"] for stat in episode_stats if int(stat.get("detective_win", 0))
+    )
+    return {
+        opponent_id: {
+            "games": int(count),
+            "detective_winrate": float(wins[opponent_id] / max(count, 1)),
+        }
+        for opponent_id, count in sorted(counts.items())
+    }
 
 
 def _play_mrx_phase(game, engine, mrx_policy):
@@ -324,9 +485,22 @@ def run(args):
     rtg_mean = float(ckpt.get("rtg_mean", 0.0))
     rtg_std = float(ckpt.get("rtg_std", 1.0))
     optimizer = torch.optim.AdamW(policy.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    opponent_plans, opponent_weights = _training_opponent_plans(
+        args,
+        mrx_checkpoint=mrx_checkpoint,
+        mrx_opponent=mrx_opponent,
+    )
+    opponent_mix = _opponent_mix_summary(opponent_plans, opponent_weights)
+    opponent_rng = np.random.default_rng(args.seed + 404)
+    opponent_policy_cache = {}
+    primary_mrx_id = (
+        args.mrx_opponent_id
+        or (_candidate_id_from_checkpoint(mrx_checkpoint) if args.mrx_checkpoint else mrx_opponent["id"])
+    )
 
     print("Detective parent:", detective_parent["id"], detective_checkpoint)
-    print("Mr.X opponent:", mrx_opponent["id"], mrx_checkpoint)
+    print("Primary Mr.X opponent:", primary_mrx_id, mrx_checkpoint)
+    print("Training opponent mix:", json.dumps(opponent_mix, indent=2))
     print("Candidate:", candidate_id)
 
     baseline_eval = evaluate_argmax(
@@ -345,8 +519,16 @@ def run(args):
     for update in range(1, args.updates + 1):
         transitions = []
         episode_stats = []
-        mrx_policy = GNNMrXEngine(checkpoint_path=mrx_checkpoint, device=device)
         for game_idx in range(args.games_per_update):
+            opponent_idx = int(
+                opponent_rng.choice(len(opponent_plans), p=opponent_weights)
+            )
+            opponent_plan = opponent_plans[opponent_idx]
+            mrx_policy = _policy_for_plan(
+                opponent_plan,
+                cache=opponent_policy_cache,
+                device=device,
+            )
             ts, stats = collect_episode(
                 seed=args.seed + update * 10000 + game_idx,
                 detective_policy=policy,
@@ -354,16 +536,20 @@ def run(args):
                 rtg_mean=rtg_mean,
                 rtg_std=rtg_std,
             )
+            stats["opponent_id"] = opponent_plan["opponent_id"]
+            stats["opponent_strategy"] = opponent_plan["strategy"]
             transitions.extend(ts)
             episode_stats.append(stats)
         if not transitions:
             continue
         train_metrics = ppo_update(policy, optimizer, transitions, args)
+        rollout_opponents = _rollout_opponent_stats(episode_stats)
         row = {
             "update": int(update),
             "n_transitions": int(len(transitions)),
             "rollout_detective_winrate": float(np.mean([s["detective_win"] for s in episode_stats])),
             "rollout_avg_final_turn": float(np.mean([s["final_turn"] for s in episode_stats])),
+            "rollout_opponents": rollout_opponents,
             **{f"train_{k}": v for k, v in train_metrics.items()},
         }
         if update % args.eval_every == 0 or update == args.updates:
@@ -392,6 +578,7 @@ def run(args):
                         eval_result,
                         history,
                         args,
+                        opponent_mix,
                     ),
                     best_path,
                 )
@@ -407,7 +594,8 @@ def run(args):
         print(
             f"update={update:03d} trans={len(transitions)} "
             f"rollout_wr={row['rollout_detective_winrate']*100:.1f}% "
-            f"loss={train_metrics.get('loss', 0):.4f}"
+            f"loss={train_metrics.get('loss', 0):.4f} "
+            f"opponents={json.dumps(rollout_opponents, sort_keys=True)}"
         )
 
     final_eval = evaluate_argmax(
@@ -432,6 +620,7 @@ def run(args):
             final_eval,
             history,
             args,
+            opponent_mix,
         ),
         last_path,
     )
@@ -440,6 +629,7 @@ def run(args):
         "best_detective_winrate": float(best_score),
         "final_detective_winrate": float(final_eval["detective_winrate"]),
         "elapsed_seconds": float(time.time() - started),
+        "training_opponent_mix": opponent_mix,
     }
     update_path = write_candidate_update(
         out_dir=out_dir,
@@ -448,7 +638,7 @@ def run(args):
         kind="ppo",
         checkpoint_path=best_path if best_path.exists() else last_path,
         parent=detective_parent["id"],
-        trained_against=[mrx_opponent["id"]],
+        trained_against=list(opponent_mix.keys()),
         metrics=metrics,
     )
     manifest = {
@@ -457,6 +647,7 @@ def run(args):
         "best_checkpoint": os.fspath(best_path) if best_path.exists() else None,
         "last_checkpoint": os.fspath(last_path),
         "registry_candidate_update": os.fspath(update_path),
+        "training_opponent_mix": opponent_mix,
         "metrics": metrics,
     }
     write_json(out_dir / "manifest.json", manifest)
@@ -492,6 +683,7 @@ def _checkpoint_payload(
     eval_result,
     history,
     args,
+    opponent_mix,
 ):
     return {
         "model_state_dict": policy.model.state_dict(),
@@ -508,6 +700,7 @@ def _checkpoint_payload(
         "run_tag": run_tag,
         "eval": eval_result,
         "delta_pp": float(eval_result["detective_winrate"] * 100.0),
+        "training_opponent_mix": opponent_mix,
         "history_tail": history[-10:],
         "training_args": vars(args),
     }
@@ -517,14 +710,18 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Train detective PPO against latest Mr.X GNN.")
     parser.add_argument("--detective-checkpoint", default=None)
     parser.add_argument("--mrx-checkpoint", default=None)
+    parser.add_argument("--mrx-opponent-id", default=None)
+    parser.add_argument("--opponent-pool", default="detective_training_mrx_pool_v1")
+    parser.add_argument("--primary-mrx-weight", type=float, default=0.5)
+    parser.add_argument("--pool-mrx-weight", type=float, default=0.5)
     parser.add_argument("--candidate-id", default=None)
     parser.add_argument("--root", default=".")
     parser.add_argument("--output-dir", default="/kaggle/working/detective_rl_checkpoints")
     parser.add_argument("--run-tag", default=None)
     parser.add_argument("--device", default=None)
     parser.add_argument("--seed", type=int, default=20260522)
-    parser.add_argument("--updates", type=int, default=20)
-    parser.add_argument("--games-per-update", type=int, default=16)
+    parser.add_argument("--updates", type=int, default=60)
+    parser.add_argument("--games-per-update", type=int, default=32)
     parser.add_argument("--ppo-epochs", type=int, default=2)
     parser.add_argument("--minibatch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=5e-5)
@@ -534,14 +731,18 @@ def build_parser():
     parser.add_argument("--entropy-coef", type=float, default=0.005)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--eval-every", type=int, default=2)
-    parser.add_argument("--eval-games", type=int, default=50)
+    parser.add_argument("--eval-games", type=int, default=100)
     parser.add_argument("--target-improvement-pp", type=float, default=3.0)
     parser.add_argument("--stop-on-improvement", action="store_true")
     return parser
 
 
 def main():
-    run(build_parser().parse_args())
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.primary_mrx_weight < 0 or args.pool_mrx_weight < 0:
+        parser.error("--primary-mrx-weight and --pool-mrx-weight must be >= 0")
+    run(args)
 
 
 if __name__ == "__main__":

@@ -112,7 +112,7 @@
       "id": "mrx_sl_v001",
       "side": "mrx",
       "kind": "sl",
-      "status": "best",
+      "status": "historical",
       "path": "Notebook\\Models\\mrx\\mrx_sl_v001.pt",
       "parent": "mrx_ppo_v001",
       "trained_against": [
@@ -145,6 +145,44 @@
       },
       "promoted_at": "2026-05-22",
       "promotion_source_checkpoint": "kaggle_outputs\\jacopodabundo__sy-league-20260522111006-02-train-mrx\\mrx_sl_checkpoints\\mrx_sl_20260522_135205\\mrx_sl_v001.pt"
+    },
+    {
+      "id": "mrx_sl_v002",
+      "side": "mrx",
+      "kind": "sl",
+      "status": "best",
+      "path": "Notebook\\Models\\mrx\\mrx_sl_v002.pt",
+      "parent": "mrx_sl_v001",
+      "trained_against": [
+        "neural_mcts_teacher",
+        "detective_best"
+      ],
+      "eval_files": [
+        "kaggle_outputs\\jacopodabundo__sy-league-20260522175926-03-promote-mrx\\promotion_mrx\\promotion_result.json"
+      ],
+      "metrics": {
+        "val_loss": 0.7755037784549156,
+        "val_acc": 0.9199634118454151,
+        "val_top3_acc": 0.9972558884061286,
+        "n_samples": 43737,
+        "elapsed_seconds": 124.38677215576172,
+        "promotion_result": true,
+        "improvement_pp": 11.377777777777776,
+        "candidate_mean_score": 0.636,
+        "baseline_mean_score": 0.5222222222222223,
+        "candidate_illegal_actions_reported": 0,
+        "vs_heuristic_mrx_winrate": 0.57,
+        "vs_heuristic_baseline_mrx_winrate": 0.5,
+        "vs_heuristic_delta_pp": 6.999999999999995,
+        "vs_detective_bc_v001_mrx_winrate": 0.72,
+        "vs_detective_bc_v001_baseline_mrx_winrate": 0.6166666666666667,
+        "vs_detective_bc_v001_delta_pp": 10.333333333333329,
+        "vs_detective_ppo_v001_mrx_winrate": 0.618,
+        "vs_detective_ppo_v001_baseline_mrx_winrate": 0.45,
+        "vs_detective_ppo_v001_delta_pp": 16.799999999999997
+      },
+      "promoted_at": "2026-05-22",
+      "promotion_source_checkpoint": "kaggle_outputs\\jacopodabundo__sy-league-20260522175926-02-train-mrx\\mrx_sl_checkpoints\\mrx_sl_20260522_204626\\mrx_sl_v002.pt"
     }
   ],
   "virtual_baselines": [
