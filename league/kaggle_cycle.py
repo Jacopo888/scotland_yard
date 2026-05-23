@@ -562,6 +562,77 @@ def run_once(args):
     return state
 
 
+def run_detective_only(args):
+    args.owner = args.owner or _kaggle_username()
+    state = _load_state(args.state)
+    run_tag = args.run_tag or datetime.now().strftime("%Y%m%d%H%M%S")
+    prefix = _slugify(f"{args.slug_prefix}-{run_tag}")
+    run_record = {"run_tag": run_tag, "mode": "detective_only", "stages": {}}
+
+    train_det_sources = []
+    if state.get("best_mrx_kernel"):
+        train_det_sources.append(state["best_mrx_kernel"])
+    if state.get("best_detective_kernel"):
+        train_det_sources.append(state["best_detective_kernel"])
+
+    train_det_slug = _slugify(f"{prefix}-01-train-det")
+    train_det_folder = prepare_train_detective_kernel(
+        args,
+        args.owner,
+        train_det_slug,
+        train_det_sources,
+    )
+    train_det_kernel, train_det_output = _run_stage(
+        args,
+        "train_detective",
+        train_det_slug,
+        train_det_folder,
+        accelerator=args.gpu_accelerator,
+        timeout=args.train_timeout,
+    )
+    run_record["stages"]["train_detective"] = train_det_kernel
+
+    promote_det_slug = _slugify(f"{prefix}-02-promote-det")
+    promote_det_sources = [train_det_kernel]
+    if state.get("best_detective_kernel"):
+        promote_det_sources.append(state["best_detective_kernel"])
+    promote_det_folder = prepare_promote_detective_kernel(
+        args,
+        args.owner,
+        promote_det_slug,
+        promote_det_sources,
+    )
+    promote_det_kernel, promote_det_output = _run_stage(
+        args,
+        "promote_detective",
+        promote_det_slug,
+        promote_det_folder,
+        accelerator=args.promotion_accelerator,
+        timeout=args.promotion_timeout,
+    )
+    run_record["stages"]["promote_detective"] = promote_det_kernel
+
+    if args.prepare_only:
+        state["runs"].append(run_record)
+        _save_state(args.state, state)
+        return state
+
+    det_apply = _apply_if_passed(
+        "detectives",
+        train_output=train_det_output,
+        promotion_output=promote_det_output,
+        force=args.force_apply,
+    )
+    if det_apply:
+        state["best_detective_kernel"] = train_det_kernel
+    else:
+        print("Detective candidate was not promoted.")
+
+    state["runs"].append(run_record)
+    _save_state(args.state, state)
+    return state
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="Run the Kaggle CPU/GPU league cycle from the local machine."
@@ -603,15 +674,19 @@ def build_parser():
     parser.add_argument("--promotion-max-games", type=int, default=None)
     parser.add_argument("--once", action="store_true", help="Run one full league cycle.")
     parser.add_argument("--loop", action="store_true", help="Repeat cycles until a promotion fails or interrupted.")
+    parser.add_argument("--detective-only", action="store_true", help="Run only detective training and detective promotion.")
     return parser
 
 
 def main():
     args = build_parser().parse_args()
-    if not args.once and not args.loop and not args.prepare_only:
-        raise SystemExit("Pass --once, --loop, or --prepare-only.")
+    if not args.once and not args.loop and not args.prepare_only and not args.detective_only:
+        raise SystemExit("Pass --once, --loop, --detective-only, or --prepare-only.")
     while True:
-        run_once(args)
+        if args.detective_only:
+            run_detective_only(args)
+        else:
+            run_once(args)
         if not args.loop:
             break
 
