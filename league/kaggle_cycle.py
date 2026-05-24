@@ -354,8 +354,17 @@ subprocess.run(cmd, check=True)
     return folder
 
 
-def prepare_log_detective_kernel(args, owner, slug, kernel_sources):
-    folder = _kernel_folder(args.work_dir, "04_log_detective")
+def prepare_log_detective_kernel(
+    args,
+    owner,
+    slug,
+    kernel_sources,
+    *,
+    games,
+    seed_base,
+    stage_folder,
+):
+    folder = _kernel_folder(args.work_dir, stage_folder)
     metadata = _metadata(
         owner=owner,
         slug=slug,
@@ -370,7 +379,7 @@ mrx_candidate = newest(['/kaggle/input/**/mrx_sl_*.pt', '/kaggle/input/**/mrx_pp
 det_parent = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
 cmd = [
     sys.executable, 'league/detective_mcts_logger.py',
-    '--games', {args.detective_log_games!r},
+    '--games', {games!r},
     '--simulations', {args.detective_mcts_simulations!r},
     '--rollout-turns', {args.detective_mcts_rollout_turns!r},
     '--exploration-c', {args.detective_mcts_exploration_c!r},
@@ -382,6 +391,8 @@ cmd = [
     '--output-dir', '/kaggle/working/detective_mcts_logs',
     '--games-per-part', {args.detective_log_games_per_part!r},
     '--log-every', {args.detective_log_every!r},
+    '--run-tag', {slug!r},
+    '--seed-base', {seed_base!r},
 ]
 if mrx_candidate:
     cmd += ['--mrx-checkpoint', mrx_candidate]
@@ -406,7 +417,7 @@ def prepare_train_detective_sl_kernel(args, owner, slug, kernel_sources):
         enable_gpu=True,
     )
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
-data_dir = newest(['/kaggle/input/**/detective_mcts_logs_*'])
+data_dirs = sorted(set(glob.glob('/kaggle/input/**/detective_mcts_logs_*', recursive=True)))
 parent = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
 cmd = [
     sys.executable, 'league/train_detective_sl.py',
@@ -415,8 +426,8 @@ cmd = [
     '--device', 'cuda',
     '--output-dir', '/kaggle/working/detective_sl_checkpoints',
 ]
-if data_dir:
-    cmd += ['--data-dir', data_dir]
+if data_dirs:
+    cmd += ['--data-dirs'] + data_dirs
 if parent:
     cmd += ['--parent-checkpoint', parent]
 cmd = [str(x) for x in cmd]
@@ -503,26 +514,47 @@ def _apply_if_passed(side, train_output, promotion_output, force=False):
     return result
 
 
+def _split_games(total_games, shards):
+    total_games = int(total_games)
+    shards = max(1, int(shards))
+    base = total_games // shards
+    extra = total_games % shards
+    return [base + (1 if idx < extra else 0) for idx in range(shards)]
+
+
 def _run_detective_branch(args, state, prefix, run_record, base_sources, start_index):
-    log_det_slug = _slugify(f"{prefix}-{start_index:02d}-log-det")
-    log_det_folder = prepare_log_detective_kernel(
-        args,
-        args.owner,
-        log_det_slug,
-        base_sources,
-    )
-    log_det_kernel, _ = _run_stage(
-        args,
-        "log_detective",
-        log_det_slug,
-        log_det_folder,
-        accelerator=args.detective_log_accelerator,
-        timeout=args.detective_log_timeout,
-    )
-    run_record["stages"]["log_detective"] = log_det_kernel
+    log_det_kernels = []
+    shard_games = _split_games(args.detective_log_games, args.detective_log_shards)
+    for shard_idx, games in enumerate(shard_games, start=1):
+        if games <= 0:
+            continue
+        shard_suffix = f"-{shard_idx:02d}" if len(shard_games) > 1 else ""
+        log_det_slug = _slugify(f"{prefix}-{start_index:02d}-log-det{shard_suffix}")
+        log_det_folder = prepare_log_detective_kernel(
+            args,
+            args.owner,
+            log_det_slug,
+            base_sources,
+            games=games,
+            seed_base=args.detective_seed_base + (shard_idx - 1) * 100000,
+            stage_folder=f"{start_index:02d}_log_detective{shard_suffix.replace('-', '_')}",
+        )
+        log_det_kernel, _ = _run_stage(
+            args,
+            f"log_detective{shard_suffix}",
+            log_det_slug,
+            log_det_folder,
+            accelerator=args.detective_log_accelerator,
+            timeout=args.detective_log_timeout,
+        )
+        stage_key = "log_detective" if len(shard_games) == 1 else f"log_detective_{shard_idx:02d}"
+        run_record["stages"][stage_key] = log_det_kernel
+        log_det_kernels.append(log_det_kernel)
+    if not log_det_kernels:
+        raise ValueError("--detective-log-games must be greater than 0")
 
     train_det_sl_slug = _slugify(f"{prefix}-{start_index + 1:02d}-train-det-sl")
-    train_det_sl_sources = [log_det_kernel]
+    train_det_sl_sources = log_det_kernels[:]
     if state.get("best_detective_kernel"):
         train_det_sl_sources.append(state["best_detective_kernel"])
     train_det_sl_folder = prepare_train_detective_sl_kernel(
@@ -759,7 +791,7 @@ def build_parser():
 
     parser.add_argument("--gpu-accelerator", default=DEFAULT_GPU_ACCELERATOR)
     parser.add_argument("--log-accelerator", default=None)
-    parser.add_argument("--detective-log-accelerator", default=None)
+    parser.add_argument("--detective-log-accelerator", default=DEFAULT_GPU_ACCELERATOR)
     parser.add_argument("--promotion-accelerator", default=None)
     parser.add_argument("--log-timeout", type=int, default=None)
     parser.add_argument("--detective-log-timeout", type=int, default=None)
@@ -773,11 +805,13 @@ def build_parser():
 
     parser.add_argument("--mrx-sl-epochs", type=int, default=12)
     parser.add_argument("--mrx-sl-batch-size", type=int, default=256)
-    parser.add_argument("--detective-log-games", type=int, default=500)
+    parser.add_argument("--detective-log-games", type=int, default=200)
+    parser.add_argument("--detective-log-shards", type=int, default=10)
     parser.add_argument("--detective-log-games-per-part", type=int, default=50)
     parser.add_argument("--detective-log-every", type=int, default=10)
-    parser.add_argument("--detective-mcts-simulations", type=int, default=32)
-    parser.add_argument("--detective-mcts-rollout-turns", type=int, default=3)
+    parser.add_argument("--detective-seed-base", type=int, default=20260522)
+    parser.add_argument("--detective-mcts-simulations", type=int, default=16)
+    parser.add_argument("--detective-mcts-rollout-turns", type=int, default=2)
     parser.add_argument("--detective-mcts-exploration-c", type=float, default=1.35)
     parser.add_argument("--detective-mcts-temperature", type=float, default=1.0)
     parser.add_argument("--detective-sl-epochs", type=int, default=8)

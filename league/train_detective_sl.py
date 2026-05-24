@@ -69,25 +69,33 @@ class DetectiveSoftPolicyDataset(Dataset):
         }
 
 
-def _find_log_dir(path):
-    if path is not None:
-        return Path(path)
-    candidates = sorted(Path("/kaggle/working/detective_mcts_logs").glob("detective_mcts_logs_*"))
-    candidates += sorted(Path("/kaggle/input").glob("**/detective_mcts_logs_*"))
-    candidates += sorted(Path("Notebook").glob("Detective_MCTS_Logs/detective_mcts_logs_*"))
+def _expand_log_dir(path):
+    path = Path(path)
+    if path.name.startswith("detective_mcts_logs_"):
+        return [path]
+    children = sorted(path.glob("detective_mcts_logs_*"))
+    return children or [path]
+
+
+def _find_log_dirs(data_dir=None, data_dirs=None):
+    candidates = []
+    for path in data_dirs or []:
+        candidates.extend(_expand_log_dir(path))
+    if data_dir is not None:
+        candidates.extend(_expand_log_dir(data_dir))
     if not candidates:
-        raise FileNotFoundError("No Detective MCTS log directory found. Pass --data-dir.")
-    return candidates[-1]
+        candidates = sorted(Path("/kaggle/working/detective_mcts_logs").glob("detective_mcts_logs_*"))
+        candidates += sorted(Path("/kaggle/input").glob("**/detective_mcts_logs_*"))
+        candidates += sorted(Path("Notebook").glob("Detective_MCTS_Logs/detective_mcts_logs_*"))
+    candidates = sorted({Path(path) for path in candidates})
+    if not candidates:
+        raise FileNotFoundError("No Detective MCTS log directory found. Pass --data-dir or --data-dirs.")
+    return candidates
 
 
-def _load_data(data_dir):
-    data_dir = Path(data_dir)
-    static = np.load(data_dir / "static_graph.npz", allow_pickle=True)
-    sample_paths = sorted(data_dir.glob("samples_part_*.parquet"))
-    sample_paths += sorted(data_dir.glob("samples_part_*.pkl"))
-    tensor_paths = sorted(data_dir.glob("tensors_part_*.npz"))
-    if not sample_paths or not tensor_paths:
-        raise FileNotFoundError(f"Missing samples/tensors parts in {data_dir}")
+def _load_data(data_dirs):
+    data_dirs = [Path(path) for path in data_dirs]
+    static = np.load(data_dirs[0] / "static_graph.npz", allow_pickle=True)
 
     frames = []
     node_dyn_parts = []
@@ -97,25 +105,36 @@ def _load_data(data_dir):
     legal_parts = []
     target_parts = []
     target_policy_parts = []
-    for sample_path, tensor_path in zip(sample_paths, tensor_paths):
-        if sample_path.suffix == ".pkl":
-            frames.append(pd.read_pickle(sample_path))
-        else:
-            frames.append(pd.read_parquet(sample_path))
-        arr = np.load(tensor_path)
-        node_dyn_parts.append(arr["node_dyn"])
-        glob_parts.append(arr["glob"])
-        det_id_parts.append(arr["det_id"])
-        ego_pos_parts.append(arr["ego_pos"])
-        legal_parts.append(arr["legal_neighbors_mask"])
-        target_parts.append(arr["target_action"])
-        if "target_policy" in arr:
-            target_policy_parts.append(arr["target_policy"])
-        else:
-            target = arr["target_action"]
-            dense = np.zeros((len(target), 199), dtype=np.float16)
-            dense[np.arange(len(target)), target] = np.float16(1.0)
-            target_policy_parts.append(dense)
+    for data_dir in data_dirs:
+        sample_paths = sorted(data_dir.glob("samples_part_*.parquet"))
+        sample_paths += sorted(data_dir.glob("samples_part_*.pkl"))
+        tensor_paths = sorted(data_dir.glob("tensors_part_*.npz"))
+        if not sample_paths or not tensor_paths:
+            raise FileNotFoundError(f"Missing samples/tensors parts in {data_dir}")
+        if len(sample_paths) != len(tensor_paths):
+            raise FileNotFoundError(
+                f"Samples/tensors part count mismatch in {data_dir}: "
+                f"{len(sample_paths)} samples vs {len(tensor_paths)} tensors"
+            )
+        for sample_path, tensor_path in zip(sample_paths, tensor_paths):
+            if sample_path.suffix == ".pkl":
+                frames.append(pd.read_pickle(sample_path))
+            else:
+                frames.append(pd.read_parquet(sample_path))
+            arr = np.load(tensor_path)
+            node_dyn_parts.append(arr["node_dyn"])
+            glob_parts.append(arr["glob"])
+            det_id_parts.append(arr["det_id"])
+            ego_pos_parts.append(arr["ego_pos"])
+            legal_parts.append(arr["legal_neighbors_mask"])
+            target_parts.append(arr["target_action"])
+            if "target_policy" in arr:
+                target_policy_parts.append(arr["target_policy"])
+            else:
+                target = arr["target_action"]
+                dense = np.zeros((len(target), 199), dtype=np.float16)
+                dense[np.arange(len(target)), target] = np.float16(1.0)
+                target_policy_parts.append(dense)
 
     samples = pd.concat(frames, ignore_index=True)
     node_dyn = np.concatenate(node_dyn_parts, axis=0)
@@ -216,7 +235,7 @@ def _run_epoch(model, loader, dense_adj, node_static, optimizer, device, value_c
 def run(args):
     ensure_project_root()
     seed_everything(args.seed)
-    data_dir = _find_log_dir(args.data_dir)
+    data_dirs = _find_log_dirs(args.data_dir, args.data_dirs)
     run_tag = args.run_tag or now_tag()
     out_dir = Path(args.output_dir) / f"detective_sl_{run_tag}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -241,7 +260,7 @@ def run(args):
         target_action,
         target_policy,
         returns_raw,
-    ) = _load_data(data_dir)
+    ) = _load_data(data_dirs)
 
     indices = np.arange(len(target_action))
     rng = np.random.default_rng(args.seed)
@@ -302,7 +321,7 @@ def run(args):
     history = []
     started = time.time()
 
-    print("Data:", data_dir)
+    print("Data dirs:", json.dumps([os.fspath(path) for path in data_dirs], indent=2))
     print("Samples:", len(dataset), "train:", len(train_idx), "val:", len(val_idx))
     print("Parent:", parent["id"], parent_checkpoint)
     print("Candidate:", candidate_id)
@@ -350,7 +369,7 @@ def run(args):
                     candidate_id,
                     parent["id"],
                     parent_checkpoint,
-                    data_dir,
+                    data_dirs,
                     run_tag,
                     return_mean,
                     return_std,
@@ -380,7 +399,7 @@ def run(args):
             candidate_id,
             parent["id"],
             parent_checkpoint,
-            data_dir,
+            data_dirs,
             run_tag,
             return_mean,
             return_std,
@@ -414,6 +433,7 @@ def run(args):
         "best_checkpoint": os.fspath(best_path),
         "last_checkpoint": os.fspath(last_path),
         "registry_candidate_update": os.fspath(update_path),
+        "data_dirs": [os.fspath(path) for path in data_dirs],
         "metrics": metrics,
     }
     write_json(out_dir / "manifest.json", manifest)
@@ -427,7 +447,7 @@ def _checkpoint_payload(
     candidate_id,
     parent_id,
     parent_checkpoint,
-    data_dir,
+    data_dirs,
     run_tag,
     return_mean,
     return_std,
@@ -458,7 +478,7 @@ def _checkpoint_payload(
         "source_checkpoint": os.fspath(parent_checkpoint),
         "parent_model_id": parent_id,
         "candidate_id": candidate_id,
-        "data_dir": os.fspath(data_dir),
+        "data_dirs": [os.fspath(path) for path in data_dirs],
         "run_tag": run_tag,
         "history_tail": history[-10:],
         "training_args": vars(args),
@@ -468,6 +488,7 @@ def _checkpoint_payload(
 def build_parser():
     parser = argparse.ArgumentParser(description="Train detective GNN from Belief MCTS logs.")
     parser.add_argument("--data-dir", default=None)
+    parser.add_argument("--data-dirs", nargs="*", default=None)
     parser.add_argument("--parent-checkpoint", default=None)
     parser.add_argument("--candidate-id", default=None)
     parser.add_argument("--root", default=".")
