@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-05-21",
+  "updated_at": "2026-05-26",
   "principles": [
     "Never train only against the latest strongest opponent.",
     "Always keep noob/baseline opponents in the pool to prevent forgetting.",
@@ -8,7 +8,7 @@
     "Kaggle notebooks should write registry_candidate_update.json; local code review applies the registry change."
   ],
   "detective_training_mrx_pool_v1": {
-    "purpose": "Train Detective_PPO_V2 after MrX_PPO_V1. Freeze Mr.X pool members during detective training.",
+    "purpose": "Train detectives against latest best Mr.X as primary opponent, plus frozen historical baselines to prevent forgetting.",
     "sample_weights": [
       {"opponent_id": "mrx_random", "weight": 0.05},
       {"opponent_id": "mrx_mcts_8_8", "weight": 0.10},
@@ -21,15 +21,16 @@
       {"suite": "vs_random", "opponent_id": "mrx_random", "games": 200},
       {"suite": "vs_mcts_15_25", "opponent_id": "mrx_mcts_15_25", "games": 300},
       {"suite": "vs_mcts_30_50", "opponent_id": "mrx_mcts_30_50", "games": 200},
+      {"suite": "vs_mrx_best", "opponent_id": "mrx_best", "games": 500},
       {"suite": "vs_mrx_bc_v001", "opponent_id": "mrx_bc_v001", "games": 300},
       {"suite": "vs_mrx_ppo_v001", "opponent_id": "mrx_ppo_v001", "games": 500}
     ],
     "promotion_gate": {
       "primary_metric": "mean_detective_winrate_over_eval_matrix",
-      "must_improve_over": "detective_ppo_v001",
+      "must_improve_over": "current_best",
       "minimum_improvement_pp": 3.0,
       "max_allowed_regression_pp_any_core_suite": 5.0,
-      "core_suites": ["vs_mcts_15_25", "vs_mcts_30_50", "vs_mrx_ppo_v001"],
+      "core_suites": ["vs_mcts_15_25", "vs_mcts_30_50", "vs_mrx_best", "vs_mrx_ppo_v001"],
       "hard_requirements": {
         "illegal_actions": 0,
         "detective_winrate_vs_random_min": 0.98
@@ -37,11 +38,12 @@
     }
   },
   "mrx_training_detective_pool_v1": {
-    "purpose": "Train MrX_PPO_V2 after Detective_PPO_V2 exists. Until then use current detective pool.",
+    "purpose": "Train/promote Mr.X against latest best detectives, plus frozen historical baselines to prevent forgetting.",
     "sample_weights": [
-      {"opponent_id": "detective_heuristic", "weight": 0.15},
-      {"opponent_id": "detective_bc_v001", "weight": 0.15},
-      {"opponent_id": "detective_ppo_v001", "weight": 0.70}
+      {"opponent_id": "detective_heuristic", "weight": 0.10},
+      {"opponent_id": "detective_bc_v001", "weight": 0.10},
+      {"opponent_id": "detective_ppo_v001", "weight": 0.20},
+      {"opponent_id": "detective_best", "weight": 0.60}
     ],
     "future_sample_weights_after_detective_v002": [
       {"opponent_id": "detective_heuristic", "weight": 0.10},
@@ -52,14 +54,15 @@
     "eval_matrix": [
       {"suite": "vs_heuristic", "opponent_id": "detective_heuristic", "games": 500},
       {"suite": "vs_detective_bc_v001", "opponent_id": "detective_bc_v001", "games": 300},
-      {"suite": "vs_detective_ppo_v001", "opponent_id": "detective_ppo_v001", "games": 1000}
+      {"suite": "vs_detective_ppo_v001", "opponent_id": "detective_ppo_v001", "games": 1000},
+      {"suite": "vs_detective_best", "opponent_id": "detective_best", "games": 1000}
     ],
     "promotion_gate": {
       "primary_metric": "mean_mrx_winrate_over_eval_matrix",
-      "must_improve_over": "mrx_ppo_v001",
+      "must_improve_over": "current_best",
       "minimum_improvement_pp": 3.0,
       "max_allowed_regression_pp_any_core_suite": 5.0,
-      "core_suites": ["vs_detective_ppo_v001"],
+      "core_suites": ["vs_detective_ppo_v001", "vs_detective_best"],
       "hard_requirements": {
         "illegal_actions": 0,
         "mrx_winrate_vs_heuristic_min": 0.45

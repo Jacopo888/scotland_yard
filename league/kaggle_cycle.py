@@ -176,6 +176,31 @@ def _wait(kernel, poll_seconds):
         time.sleep(poll_seconds)
 
 
+def _wait_many(kernels, poll_seconds):
+    pending = set(kernels)
+    statuses = {}
+    while pending:
+        for kernel in list(pending):
+            status = _status(kernel)
+            statuses[kernel] = status
+            print(f"{kernel}: {status}")
+            if status in TERMINAL_STATUSES:
+                pending.remove(kernel)
+        if pending:
+            print(f"Waiting for {len(pending)} Kaggle kernels...")
+            time.sleep(poll_seconds)
+
+    failed = {
+        kernel: status
+        for kernel, status in statuses.items()
+        if status in TERMINAL_STATUSES and status != "complete"
+    }
+    if failed:
+        details = ", ".join(f"{kernel}={status}" for kernel, status in failed.items())
+        raise RuntimeError(f"Kaggle kernels failed: {details}")
+    return statuses
+
+
 def _download(kernel, output_root, force=True, attempts=3):
     target = Path(output_root) / kernel.replace("/", "__")
     target.mkdir(parents=True, exist_ok=True)
@@ -294,8 +319,16 @@ def prepare_promote_mrx_kernel(args, owner, slug, kernel_sources):
         else ""
     )
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
-candidate = newest(['/kaggle/input/**/mrx_sl_*.pt', '/kaggle/input/**/mrx_ppo_*.pt'], exclude=('last',))
-baseline = newest(['/kaggle/input/**/mrx_*.pt'], exclude=('sl_', 'last'))
+mrx_checkpoints = []
+for pattern in ['/kaggle/input/**/mrx_sl_*.pt', '/kaggle/input/**/mrx_ppo_*.pt']:
+    mrx_checkpoints.extend(glob.glob(pattern, recursive=True))
+mrx_checkpoints = sorted(
+    set(path for path in mrx_checkpoints if 'last' not in os.path.basename(path)),
+    key=lambda path: (Path(path).stem, path),
+)
+candidate = mrx_checkpoints[-1] if mrx_checkpoints else None
+baseline_candidates = [path for path in mrx_checkpoints if path != candidate]
+baseline = baseline_candidates[-1] if baseline_candidates else None
 if not candidate:
     raise SystemExit('Missing Mr.X candidate checkpoint in kernel sources')
 candidate_id = Path(candidate).stem
@@ -464,12 +497,18 @@ def prepare_promote_detective_kernel(args, owner, slug, kernel_sources):
         else ""
     )
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
-candidate = newest(['/kaggle/input/**/detective_ppo_*.pt'], exclude=('last',))
-if not candidate:
-    candidate = newest(['/kaggle/input/**/detective_sl_*.pt'], exclude=('last',))
+detective_checkpoints = []
+for pattern in ['/kaggle/input/**/detective_ppo_*.pt', '/kaggle/input/**/detective_sl_*.pt']:
+    detective_checkpoints.extend(glob.glob(pattern, recursive=True))
+detective_checkpoints = sorted(
+    set(path for path in detective_checkpoints if 'last' not in os.path.basename(path)),
+    key=lambda path: (Path(path).stem, path),
+)
+candidate = detective_checkpoints[-1] if detective_checkpoints else None
 if not candidate:
     candidate = newest(['/kaggle/input/**/detective_ppo_*_last.pt', '/kaggle/input/**/detective_sl_*_last.pt'])
-baseline = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
+baseline_candidates = [path for path in detective_checkpoints if path != candidate]
+baseline = baseline_candidates[-1] if baseline_candidates else None
 if not candidate:
     raise SystemExit('Missing detective candidate checkpoint in kernel sources')
 candidate_id = Path(candidate).stem
@@ -506,6 +545,40 @@ def _run_stage(args, stage_name, slug, folder, accelerator, timeout):
     _wait(kernel, poll_seconds=args.poll_seconds)
     output = _download(kernel, args.output_dir)
     return kernel, output
+
+
+def _run_stages_parallel(args, stages, parallel_limit=None):
+    results = []
+    if args.prepare_only:
+        for stage in stages:
+            print(f"Prepared {stage['stage_name']}: {stage['folder']}")
+            results.append((stage["kernel"], None))
+        return results
+
+    limit = len(stages)
+    if parallel_limit:
+        limit = max(1, int(parallel_limit))
+    total_batches = (len(stages) + limit - 1) // limit
+
+    for batch_index, start in enumerate(range(0, len(stages), limit), start=1):
+        batch = stages[start : start + limit]
+        print(
+            f"Starting parallel Kaggle batch {batch_index}/{total_batches} "
+            f"with {len(batch)} kernels."
+        )
+        kernels = []
+        for stage in batch:
+            _push_kernel(
+                stage["folder"],
+                accelerator=stage["accelerator"],
+                timeout=stage["timeout"],
+            )
+            kernels.append(stage["kernel"])
+
+        _wait_many(kernels, poll_seconds=args.poll_seconds)
+        results.extend((kernel, _download(kernel, args.output_dir)) for kernel in kernels)
+
+    return results
 
 
 def _apply_if_passed(side, train_output, promotion_output, force=False):
@@ -578,6 +651,7 @@ def _run_detective_branch(args, state, prefix, run_record, base_sources, start_i
             run_record["stages"][stage_key] = kernel
     else:
         shard_games = _split_games(args.detective_log_games, args.detective_log_shards)
+        log_det_stages = []
         for shard_idx, games in enumerate(shard_games, start=1):
             if games <= 0:
                 continue
@@ -592,17 +666,48 @@ def _run_detective_branch(args, state, prefix, run_record, base_sources, start_i
                 seed_base=args.detective_seed_base + (shard_idx - 1) * 100000,
                 stage_folder=f"{start_index:02d}_log_detective{shard_suffix.replace('-', '_')}",
             )
-            log_det_kernel, _ = _run_stage(
-                args,
-                f"log_detective{shard_suffix}",
-                log_det_slug,
-                log_det_folder,
-                accelerator=args.detective_log_accelerator,
-                timeout=args.detective_log_timeout,
+            log_det_stages.append(
+                {
+                    "stage_name": f"log_detective{shard_suffix}",
+                    "slug": log_det_slug,
+                    "kernel": f"{args.owner}/{log_det_slug}",
+                    "folder": log_det_folder,
+                    "accelerator": args.detective_log_accelerator,
+                    "timeout": args.detective_log_timeout,
+                    "shard_idx": shard_idx,
+                }
             )
-            stage_key = "log_detective" if len(shard_games) == 1 else f"log_detective_{shard_idx:02d}"
-            run_record["stages"][stage_key] = log_det_kernel
-            log_det_kernels.append(log_det_kernel)
+        if args.detective_log_parallel and len(log_det_stages) > 1:
+            completed = _run_stages_parallel(
+                args,
+                log_det_stages,
+                parallel_limit=args.detective_log_parallel_limit,
+            )
+            completed_kernels = {kernel for kernel, _ in completed}
+            for stage in log_det_stages:
+                log_det_kernel = stage["kernel"]
+                if log_det_kernel not in completed_kernels:
+                    raise RuntimeError(f"Missing completed detective log shard: {log_det_kernel}")
+                stage_key = f"log_detective_{stage['shard_idx']:02d}"
+                run_record["stages"][stage_key] = log_det_kernel
+                log_det_kernels.append(log_det_kernel)
+        else:
+            for stage in log_det_stages:
+                log_det_kernel, _ = _run_stage(
+                    args,
+                    stage["stage_name"],
+                    stage["slug"],
+                    stage["folder"],
+                    accelerator=stage["accelerator"],
+                    timeout=stage["timeout"],
+                )
+                stage_key = (
+                    "log_detective"
+                    if len(log_det_stages) == 1
+                    else f"log_detective_{stage['shard_idx']:02d}"
+                )
+                run_record["stages"][stage_key] = log_det_kernel
+                log_det_kernels.append(log_det_kernel)
         if not log_det_kernels:
             raise ValueError("--detective-log-games must be greater than 0")
 
@@ -846,7 +951,7 @@ def build_parser():
 
     parser.add_argument("--gpu-accelerator", default=DEFAULT_GPU_ACCELERATOR)
     parser.add_argument("--log-accelerator", default=None)
-    parser.add_argument("--detective-log-accelerator", default=DEFAULT_GPU_ACCELERATOR)
+    parser.add_argument("--detective-log-accelerator", default=None)
     parser.add_argument("--promotion-accelerator", default=None)
     parser.add_argument("--log-timeout", type=int, default=None)
     parser.add_argument("--detective-log-timeout", type=int, default=None)
@@ -862,6 +967,17 @@ def build_parser():
     parser.add_argument("--mrx-sl-batch-size", type=int, default=256)
     parser.add_argument("--detective-log-games", type=int, default=200)
     parser.add_argument("--detective-log-shards", type=int, default=10)
+    parser.add_argument(
+        "--detective-log-parallel",
+        action="store_true",
+        help="Push all detective logging shards before waiting, so Kaggle can run them concurrently.",
+    )
+    parser.add_argument(
+        "--detective-log-parallel-limit",
+        type=int,
+        default=5,
+        help="Maximum detective logging kernels to keep active at once when --detective-log-parallel is used.",
+    )
     parser.add_argument("--detective-log-source-kernels", nargs="*", default=None)
     parser.add_argument("--detective-log-games-per-part", type=int, default=50)
     parser.add_argument("--detective-log-every", type=int, default=10)
@@ -890,8 +1006,28 @@ def build_parser():
     return parser
 
 
+def _normalise_accelerator(value):
+    if value is None:
+        return None
+    value = str(value).strip()
+    if not value or value.lower() in {"none", "cpu", "false", "off", "no"}:
+        return None
+    return value
+
+
+def _normalise_args(args):
+    for attr in (
+        "gpu_accelerator",
+        "log_accelerator",
+        "detective_log_accelerator",
+        "promotion_accelerator",
+    ):
+        setattr(args, attr, _normalise_accelerator(getattr(args, attr)))
+    return args
+
+
 def main():
-    args = build_parser().parse_args()
+    args = _normalise_args(build_parser().parse_args())
     if not args.once and not args.loop and not args.prepare_only and not args.detective_only:
         raise SystemExit("Pass --once, --loop, --detective-only, or --prepare-only.")
     while True:

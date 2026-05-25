@@ -15,7 +15,7 @@ import numpy as np
 
 from gnn_detective_engine import GNNDetectiveEngine
 from gnn_mrx_engine import GNNMrXEngine
-from model_registry import get_best, get_entry, get_pool, resolve_path
+from model_registry import get_best, get_entry, get_pool, resolve_model_id, resolve_path
 from validation.validate_gnn_mrx import evaluate_suite
 
 
@@ -30,7 +30,21 @@ def _abs(path):
 
 
 def _resolve_registry_path(model_id, root):
-    return resolve_path(model_id, root=root)
+    path = Path(resolve_path(model_id, root=root))
+    if path.exists():
+        return str(path)
+    kaggle_input = Path("/kaggle/input")
+    if kaggle_input.exists():
+        hits = sorted(kaggle_input.glob(f"**/{path.name}"))
+        if hits:
+            return str(hits[-1])
+    return str(path)
+
+
+def _promotion_baseline_id(raw_baseline_id, side, root):
+    if raw_baseline_id in (None, "current_best", "best"):
+        return get_best(side, root=root)["id"]
+    return resolve_model_id(raw_baseline_id, root=root)
 
 
 def _model_or_baseline(model_id, root):
@@ -50,7 +64,8 @@ def _next_output_path(candidate_id):
 
 
 def _opponent_plan(row, root):
-    opponent_id = row["opponent_id"]
+    requested_opponent_id = row["opponent_id"]
+    opponent_id = resolve_model_id(requested_opponent_id, root=root)
     entry = _model_or_baseline(opponent_id, root=root)
     kind = entry.get("kind")
     side = entry.get("side")
@@ -58,6 +73,7 @@ def _opponent_plan(row, root):
     if opponent_id == "detective_heuristic":
         return {
             "opponent_id": opponent_id,
+            "requested_opponent_id": requested_opponent_id,
             "side": side,
             "strategy": "heuristic",
             "checkpoint": None,
@@ -65,6 +81,7 @@ def _opponent_plan(row, root):
     if opponent_id == "mrx_random":
         return {
             "opponent_id": opponent_id,
+            "requested_opponent_id": requested_opponent_id,
             "side": side,
             "strategy": "random",
             "checkpoint": None,
@@ -73,6 +90,7 @@ def _opponent_plan(row, root):
         config = entry.get("config", {})
         return {
             "opponent_id": opponent_id,
+            "requested_opponent_id": requested_opponent_id,
             "side": side,
             "strategy": "mcts",
             "checkpoint": None,
@@ -83,6 +101,7 @@ def _opponent_plan(row, root):
     checkpoint = _resolve_registry_path(opponent_id, root=root)
     return {
         "opponent_id": opponent_id,
+        "requested_opponent_id": requested_opponent_id,
         "side": side,
         "strategy": "gnn",
         "checkpoint": checkpoint,
@@ -241,19 +260,23 @@ def build_plan(args):
     gate = pool.get("promotion_gate", {})
 
     candidate_id = args.candidate_id or Path(args.candidate_checkpoint).stem
-    baseline_id = args.baseline_id or gate.get("must_improve_over")
-    if baseline_id is None:
-        baseline_id = get_best(side, root=root)["id"]
+    baseline_id = _promotion_baseline_id(
+        args.baseline_id or gate.get("must_improve_over"),
+        side,
+        root=root,
+    )
     baseline_checkpoint = args.baseline_checkpoint or _resolve_registry_path(baseline_id, root=root)
 
     matrix = []
     for row in pool.get("eval_matrix", []):
+        opponent = _opponent_plan(row, root=root)
         planned = {
             "suite": row["suite"],
-            "opponent_id": row["opponent_id"],
+            "opponent_id": opponent["opponent_id"],
+            "requested_opponent_id": row["opponent_id"],
             "base_games": int(row["games"]),
             "games": _games(row["games"], args.games_scale, args.max_games_per_suite),
-            "opponent": _opponent_plan(row, root=root),
+            "opponent": opponent,
         }
         matrix.append(planned)
 
@@ -331,6 +354,7 @@ def run_promotion_validation(args):
             {
                 "suite": suite["suite"],
                 "opponent_id": suite["opponent_id"],
+                "requested_opponent_id": suite.get("requested_opponent_id"),
                 "games": suite["games"],
                 "base_games": suite["base_games"],
                 "metric": "mrx_winrate" if plan["side"] == "mrx" else "detective_winrate",

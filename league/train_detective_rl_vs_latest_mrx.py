@@ -30,7 +30,7 @@ from league.common import (
     write_candidate_update,
     write_json,
 )
-from model_registry import get_entry, resolve_path
+from model_registry import get_entry, resolve_model_id, resolve_path
 from mrx_engine import MrxEngine
 from utility import _min_detective_distance
 
@@ -89,20 +89,28 @@ def _candidate_id_from_checkpoint(path):
 
 
 def _registry_mrx_plan(opponent_id, root):
+    requested_opponent_id = opponent_id
+    opponent_id = resolve_model_id(opponent_id, root=root)
     entry = get_entry(opponent_id, root=root)
     kind = entry.get("kind")
     if opponent_id == "mrx_random":
-        return {"opponent_id": opponent_id, "strategy": "random"}
+        return {
+            "opponent_id": opponent_id,
+            "requested_opponent_id": requested_opponent_id,
+            "strategy": "random",
+        }
     if kind == "mcts":
         config = entry.get("config", {})
         return {
             "opponent_id": opponent_id,
+            "requested_opponent_id": requested_opponent_id,
             "strategy": "mcts",
             "explorations": int(config["explorations"]),
             "simulations": int(config["simulations"]),
         }
     return {
         "opponent_id": opponent_id,
+        "requested_opponent_id": requested_opponent_id,
         "strategy": "gnn",
         "checkpoint": resolve_path(opponent_id, root=root),
     }

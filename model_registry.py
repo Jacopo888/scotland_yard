@@ -3,6 +3,11 @@ from pathlib import Path
 
 
 DEFAULT_REGISTRY_DIR = Path("Notebook") / "Registry"
+BEST_MODEL_ALIASES = {
+    "detective_best": "detectives",
+    "detectives_best": "detectives",
+    "mrx_best": "mrx",
+}
 
 
 def _read_json(path):
@@ -34,6 +39,15 @@ def _all_entries(registry):
     return list(registry.get("models", [])) + list(registry.get("virtual_baselines", []))
 
 
+def resolve_model_id(model_id, root="."):
+    side = BEST_MODEL_ALIASES.get(model_id)
+    if side == "detectives":
+        return load_best_detective(root)["best_model_id"]
+    if side == "mrx":
+        return load_best_mrx(root)["best_model_id"]
+    return model_id
+
+
 def _checkpoint_path(path, root="."):
     checkpoint_path = Path(path)
     if checkpoint_path.is_absolute():
@@ -52,6 +66,7 @@ def list_models(side=None, kind=None, include_virtual=False, root="."):
 
 
 def get_entry(model_id, root="."):
+    model_id = resolve_model_id(model_id, root=root)
     registry = load_model_registry(root)
     for entry in _all_entries(registry):
         if entry.get("id") == model_id:

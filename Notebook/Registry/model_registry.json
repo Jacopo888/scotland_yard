@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-05-25",
+  "updated_at": "2026-05-26",
   "notes": [
     "Registry is the source of truth for model identity, lineage, status, evaluation files, and opponent pools.",
     "Promoted checkpoint files live in Notebook/Models/<side>/<model_id>.pt; do not overwrite old promoted versions.",
@@ -311,7 +311,7 @@
       "id": "detective_ppo_v003",
       "side": "detectives",
       "kind": "ppo",
-      "status": "best",
+      "status": "historical",
       "path": "Notebook\\Models\\detectives\\detective_ppo_v003.pt",
       "parent": "detective_ppo_v002",
       "trained_against": [
@@ -391,6 +391,91 @@
       },
       "promoted_at": "2026-05-25",
       "promotion_source_checkpoint": "kaggle_outputs\\jacopodabundo__sy-league-20260525163153-01-train-det\\detective_rl_checkpoints\\detective_rl_20260525_143219\\detective_ppo_v003.pt"
+    },
+    {
+      "id": "detective_ppo_v004",
+      "side": "detectives",
+      "kind": "ppo",
+      "status": "best",
+      "path": "Notebook\\Models\\detectives\\detective_ppo_v004.pt",
+      "parent": "detective_ppo_v003",
+      "trained_against": [
+        "mrx_sl_v003",
+        "mrx_random",
+        "mrx_mcts_8_8",
+        "mrx_mcts_15_25",
+        "mrx_mcts_30_50",
+        "mrx_bc_v001",
+        "mrx_ppo_v001"
+      ],
+      "eval_files": [
+        "kaggle_outputs\\jacopodabundo__sy-league-20260525211310-02-promote-det\\promotion_detective\\promotion_result.json"
+      ],
+      "metrics": {
+        "baseline_detective_winrate": 0.61,
+        "best_detective_winrate": 0.72,
+        "final_detective_winrate": 0.665,
+        "elapsed_seconds": 8732.14962220192,
+        "training_opponent_mix": {
+          "mrx_sl_v003": {
+            "weight": 0.5,
+            "strategy": "gnn",
+            "role": "primary"
+          },
+          "mrx_random": {
+            "weight": 0.025,
+            "strategy": "random",
+            "role": "detective_training_mrx_pool_v1"
+          },
+          "mrx_mcts_8_8": {
+            "weight": 0.05,
+            "strategy": "mcts",
+            "role": "detective_training_mrx_pool_v1"
+          },
+          "mrx_mcts_15_25": {
+            "weight": 0.1,
+            "strategy": "mcts",
+            "role": "detective_training_mrx_pool_v1"
+          },
+          "mrx_mcts_30_50": {
+            "weight": 0.1,
+            "strategy": "mcts",
+            "role": "detective_training_mrx_pool_v1"
+          },
+          "mrx_bc_v001": {
+            "weight": 0.1,
+            "strategy": "gnn",
+            "role": "detective_training_mrx_pool_v1"
+          },
+          "mrx_ppo_v001": {
+            "weight": 0.125,
+            "strategy": "gnn",
+            "role": "detective_training_mrx_pool_v1"
+          }
+        },
+        "promotion_result": true,
+        "improvement_pp": 18.386666666666663,
+        "candidate_mean_score": 0.9107333333333333,
+        "baseline_mean_score": 0.7268666666666667,
+        "candidate_illegal_actions_reported": 0,
+        "vs_random_detective_winrate": 1.0,
+        "vs_random_baseline_detective_winrate": 0.995,
+        "vs_random_delta_pp": 0.5000000000000004,
+        "vs_mcts_15_25_detective_winrate": 0.9366666666666666,
+        "vs_mcts_15_25_baseline_detective_winrate": 0.79,
+        "vs_mcts_15_25_delta_pp": 14.66666666666666,
+        "vs_mcts_30_50_detective_winrate": 0.905,
+        "vs_mcts_30_50_baseline_detective_winrate": 0.71,
+        "vs_mcts_30_50_delta_pp": 19.500000000000007,
+        "vs_mrx_bc_v001_detective_winrate": 0.9,
+        "vs_mrx_bc_v001_baseline_detective_winrate": 0.5933333333333334,
+        "vs_mrx_bc_v001_delta_pp": 30.666666666666664,
+        "vs_mrx_ppo_v001_detective_winrate": 0.812,
+        "vs_mrx_ppo_v001_baseline_detective_winrate": 0.546,
+        "vs_mrx_ppo_v001_delta_pp": 26.6
+      },
+      "promoted_at": "2026-05-26",
+      "promotion_source_checkpoint": "kaggle_outputs\\jacopodabundo__sy-league-20260525211310-01-train-det\\detective_rl_checkpoints\\detective_rl_20260525_191350\\detective_ppo_v004.pt"
     }
   ],
   "virtual_baselines": [
