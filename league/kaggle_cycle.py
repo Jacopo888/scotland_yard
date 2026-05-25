@@ -106,6 +106,11 @@ def _metadata(owner, slug, title, code_file, kernel_sources=None, enable_gpu=Fal
 
 
 def _base_bootstrap(repo_url, repo_ref):
+    clone_cmd = (
+        f"['git', 'clone', {repo_url!r}, str(repo)]"
+        if repo_ref
+        else f"['git', 'clone', '--depth', '1', {repo_url!r}, str(repo)]"
+    )
     checkout = ""
     if repo_ref:
         checkout = f"subprocess.run(['git', 'checkout', {repo_ref!r}], cwd=repo, check=True)\n"
@@ -119,7 +124,7 @@ from pathlib import Path
 subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', 'networkx', 'numpy', 'pandas', 'pyarrow', 'tqdm', 'scipy', 'matplotlib', 'torch'], check=False)
 repo = Path('/tmp/scotland_yard')
 if not repo.exists():
-    subprocess.run(['git', 'clone', '--depth', '1', {repo_url!r}, str(repo)], check=True)
+    subprocess.run({clone_cmd}, check=True)
 {checkout}os.chdir(repo)
 
 def newest(patterns, exclude=()):
