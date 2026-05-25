@@ -328,7 +328,11 @@ def prepare_train_detective_kernel(args, owner, slug, kernel_sources):
     )
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
 mrx_candidate = newest(['/kaggle/input/**/mrx_sl_*.pt', '/kaggle/input/**/mrx_ppo_*.pt'], exclude=('last',))
-det_parent = newest(['/kaggle/input/**/detective_sl_*.pt'], exclude=('last',))
+det_parent = None
+if {args.use_detective_sl_parent!r}:
+    det_parent = newest(['/kaggle/input/**/detective_sl_*.pt'], exclude=('last',))
+if not det_parent:
+    det_parent = newest(['/kaggle/input/**/detective_*.pt'], exclude=('sl_', 'last'))
 if not det_parent:
     det_parent = newest(['/kaggle/input/**/detective_*.pt'], exclude=('last',))
 cmd = [
@@ -523,6 +527,45 @@ def _split_games(total_games, shards):
 
 
 def _run_detective_branch(args, state, prefix, run_record, base_sources, start_index):
+    if args.detective_rl_only:
+        train_det_slug = _slugify(f"{prefix}-{start_index:02d}-train-det")
+        train_det_folder = prepare_train_detective_kernel(
+            args,
+            args.owner,
+            train_det_slug,
+            base_sources,
+        )
+        train_det_kernel, train_det_output = _run_stage(
+            args,
+            "train_detective",
+            train_det_slug,
+            train_det_folder,
+            accelerator=args.gpu_accelerator,
+            timeout=args.train_timeout,
+        )
+        run_record["stages"]["train_detective"] = train_det_kernel
+
+        promote_det_slug = _slugify(f"{prefix}-{start_index + 1:02d}-promote-det")
+        promote_det_sources = [train_det_kernel]
+        if state.get("best_detective_kernel"):
+            promote_det_sources.append(state["best_detective_kernel"])
+        promote_det_folder = prepare_promote_detective_kernel(
+            args,
+            args.owner,
+            promote_det_slug,
+            promote_det_sources,
+        )
+        promote_det_kernel, promote_det_output = _run_stage(
+            args,
+            "promote_detective",
+            promote_det_slug,
+            promote_det_folder,
+            accelerator=args.promotion_accelerator,
+            timeout=args.promotion_timeout,
+        )
+        run_record["stages"]["promote_detective"] = promote_det_kernel
+        return train_det_kernel, train_det_output, promote_det_output
+
     log_det_kernels = list(args.detective_log_source_kernels or [])
     if log_det_kernels:
         for idx, kernel in enumerate(log_det_kernels, start=1):
@@ -584,9 +627,11 @@ def _run_detective_branch(args, state, prefix, run_record, base_sources, start_i
 
     if not args.skip_detective_ppo:
         train_det_slug = _slugify(f"{prefix}-{next_index:02d}-train-det")
-        train_det_sources = [train_det_sl_kernel] + [
+        train_det_sources = [
             source for source in base_sources if source != train_det_sl_kernel
         ]
+        if args.use_detective_sl_parent:
+            train_det_sources.insert(0, train_det_sl_kernel)
         train_det_folder = prepare_train_detective_kernel(
             args,
             args.owner,
@@ -822,6 +867,7 @@ def build_parser():
     parser.add_argument("--detective-mcts-temperature", type=float, default=1.0)
     parser.add_argument("--detective-sl-epochs", type=int, default=8)
     parser.add_argument("--detective-sl-batch-size", type=int, default=128)
+    parser.add_argument("--use-detective-sl-parent", action="store_true")
     parser.add_argument("--detective-updates", type=int, default=60)
     parser.add_argument("--detective-games-per-update", type=int, default=32)
     parser.add_argument("--detective-eval-games", type=int, default=100)
@@ -835,6 +881,7 @@ def build_parser():
     parser.add_argument("--once", action="store_true", help="Run one full league cycle.")
     parser.add_argument("--loop", action="store_true", help="Repeat cycles until a promotion fails or interrupted.")
     parser.add_argument("--detective-only", action="store_true", help="Run only detective training and detective promotion.")
+    parser.add_argument("--detective-rl-only", action="store_true", help="Skip detective Belief/MCTS logging and SL; run only detective PPO plus promotion.")
     return parser
 
 
