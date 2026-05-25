@@ -5,7 +5,6 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import torch
 
 from model_registry import (
     get_best,
@@ -28,6 +27,8 @@ def ensure_project_root():
 def seed_everything(seed):
     random.seed(seed)
     np.random.seed(seed)
+    import torch
+
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)

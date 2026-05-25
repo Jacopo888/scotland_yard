@@ -373,6 +373,8 @@ def run(args):
                     run_tag,
                     return_mean,
                     return_std,
+                    int(node_dyn.shape[-1]),
+                    int(glob.shape[-1]),
                     epoch,
                     val_metrics,
                     history,
@@ -403,6 +405,8 @@ def run(args):
             run_tag,
             return_mean,
             return_std,
+            int(node_dyn.shape[-1]),
+            int(glob.shape[-1]),
             args.epochs,
             val_metrics,
             history,
@@ -451,6 +455,8 @@ def _checkpoint_payload(
     run_tag,
     return_mean,
     return_std,
+    node_dyn_dim,
+    global_dim,
     epoch,
     val_metrics,
     history,
@@ -459,8 +465,8 @@ def _checkpoint_payload(
     cfg = dict(base_config)
     cfg.update(
         {
-            "node_dyn_dim": 14,
-            "global_dim": 28,
+            "node_dyn_dim": int(node_dyn_dim),
+            "global_dim": int(global_dim),
             "return_mean": float(return_mean),
             "return_std": float(return_std),
             "source_kind": "detective_belief_mcts_sl",

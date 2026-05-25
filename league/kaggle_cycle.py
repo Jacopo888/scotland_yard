@@ -523,35 +523,40 @@ def _split_games(total_games, shards):
 
 
 def _run_detective_branch(args, state, prefix, run_record, base_sources, start_index):
-    log_det_kernels = []
-    shard_games = _split_games(args.detective_log_games, args.detective_log_shards)
-    for shard_idx, games in enumerate(shard_games, start=1):
-        if games <= 0:
-            continue
-        shard_suffix = f"-{shard_idx:02d}" if len(shard_games) > 1 else ""
-        log_det_slug = _slugify(f"{prefix}-{start_index:02d}-log-det{shard_suffix}")
-        log_det_folder = prepare_log_detective_kernel(
-            args,
-            args.owner,
-            log_det_slug,
-            base_sources,
-            games=games,
-            seed_base=args.detective_seed_base + (shard_idx - 1) * 100000,
-            stage_folder=f"{start_index:02d}_log_detective{shard_suffix.replace('-', '_')}",
-        )
-        log_det_kernel, _ = _run_stage(
-            args,
-            f"log_detective{shard_suffix}",
-            log_det_slug,
-            log_det_folder,
-            accelerator=args.detective_log_accelerator,
-            timeout=args.detective_log_timeout,
-        )
-        stage_key = "log_detective" if len(shard_games) == 1 else f"log_detective_{shard_idx:02d}"
-        run_record["stages"][stage_key] = log_det_kernel
-        log_det_kernels.append(log_det_kernel)
-    if not log_det_kernels:
-        raise ValueError("--detective-log-games must be greater than 0")
+    log_det_kernels = list(args.detective_log_source_kernels or [])
+    if log_det_kernels:
+        for idx, kernel in enumerate(log_det_kernels, start=1):
+            stage_key = "log_detective" if len(log_det_kernels) == 1 else f"log_detective_{idx:02d}"
+            run_record["stages"][stage_key] = kernel
+    else:
+        shard_games = _split_games(args.detective_log_games, args.detective_log_shards)
+        for shard_idx, games in enumerate(shard_games, start=1):
+            if games <= 0:
+                continue
+            shard_suffix = f"-{shard_idx:02d}" if len(shard_games) > 1 else ""
+            log_det_slug = _slugify(f"{prefix}-{start_index:02d}-log-det{shard_suffix}")
+            log_det_folder = prepare_log_detective_kernel(
+                args,
+                args.owner,
+                log_det_slug,
+                base_sources,
+                games=games,
+                seed_base=args.detective_seed_base + (shard_idx - 1) * 100000,
+                stage_folder=f"{start_index:02d}_log_detective{shard_suffix.replace('-', '_')}",
+            )
+            log_det_kernel, _ = _run_stage(
+                args,
+                f"log_detective{shard_suffix}",
+                log_det_slug,
+                log_det_folder,
+                accelerator=args.detective_log_accelerator,
+                timeout=args.detective_log_timeout,
+            )
+            stage_key = "log_detective" if len(shard_games) == 1 else f"log_detective_{shard_idx:02d}"
+            run_record["stages"][stage_key] = log_det_kernel
+            log_det_kernels.append(log_det_kernel)
+        if not log_det_kernels:
+            raise ValueError("--detective-log-games must be greater than 0")
 
     train_det_sl_slug = _slugify(f"{prefix}-{start_index + 1:02d}-train-det-sl")
     train_det_sl_sources = log_det_kernels[:]
@@ -807,6 +812,7 @@ def build_parser():
     parser.add_argument("--mrx-sl-batch-size", type=int, default=256)
     parser.add_argument("--detective-log-games", type=int, default=200)
     parser.add_argument("--detective-log-shards", type=int, default=10)
+    parser.add_argument("--detective-log-source-kernels", nargs="*", default=None)
     parser.add_argument("--detective-log-games-per-part", type=int, default=50)
     parser.add_argument("--detective-log-every", type=int, default=10)
     parser.add_argument("--detective-seed-base", type=int, default=20260522)
