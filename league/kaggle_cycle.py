@@ -17,6 +17,7 @@ from league.promotion_apply import apply_promotion
 
 
 DEFAULT_GPU_ACCELERATOR = "NvidiaTeslaT4"
+MAX_KAGGLE_SLUG_LENGTH = 50
 TERMINAL_STATUSES = {"complete", "error", "cancel_acknowledged", "cancelled"}
 
 
@@ -40,7 +41,7 @@ def _slugify(value):
     value = value.lower()
     value = re.sub(r"[^a-z0-9]+", "-", value)
     value = value.strip("-")
-    return value[:63].strip("-")
+    return value[:MAX_KAGGLE_SLUG_LENGTH].strip("-")
 
 
 def _read_json(path):
