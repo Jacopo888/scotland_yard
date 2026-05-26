@@ -604,6 +604,14 @@ def _split_games(total_games, shards):
     return [base + (1 if idx < extra else 0) for idx in range(shards)]
 
 
+def _unique_sources(sources):
+    out = []
+    for source in sources:
+        if source and source not in out:
+            out.append(source)
+    return out
+
+
 def _run_detective_branch(args, state, prefix, run_record, base_sources, start_index):
     if args.detective_rl_only:
         train_det_slug = _slugify(f"{prefix}-{start_index:02d}-train-det")
@@ -624,9 +632,7 @@ def _run_detective_branch(args, state, prefix, run_record, base_sources, start_i
         run_record["stages"]["train_detective"] = train_det_kernel
 
         promote_det_slug = _slugify(f"{prefix}-{start_index + 1:02d}-promote-det")
-        promote_det_sources = [train_det_kernel]
-        if state.get("best_detective_kernel"):
-            promote_det_sources.append(state["best_detective_kernel"])
+        promote_det_sources = _unique_sources([train_det_kernel] + list(base_sources))
         promote_det_folder = prepare_promote_detective_kernel(
             args,
             args.owner,
@@ -762,9 +768,7 @@ def _run_detective_branch(args, state, prefix, run_record, base_sources, start_i
         next_index += 1
 
     promote_det_slug = _slugify(f"{prefix}-{next_index:02d}-promote-det")
-    promote_det_sources = [candidate_det_kernel]
-    if state.get("best_detective_kernel"):
-        promote_det_sources.append(state["best_detective_kernel"])
+    promote_det_sources = _unique_sources([candidate_det_kernel] + list(base_sources))
     promote_det_folder = prepare_promote_detective_kernel(
         args,
         args.owner,
@@ -903,14 +907,36 @@ def run_detective_only(args):
         for k in (state.get("best_mrx_kernel"), state.get("best_detective_kernel"))
         if k
     ]
-    candidate_det_kernel, candidate_det_output, promote_det_output = _run_detective_branch(
-        args,
-        state,
-        prefix,
-        run_record,
-        detective_sources,
-        start_index=1,
-    )
+    if args.detective_promote_source_kernel:
+        candidate_det_kernel = args.detective_promote_source_kernel
+        candidate_det_output = (
+            None if args.prepare_only else _download(candidate_det_kernel, args.output_dir)
+        )
+        promote_det_slug = _slugify(f"{prefix}-01-promote-det")
+        promote_det_folder = prepare_promote_detective_kernel(
+            args,
+            args.owner,
+            promote_det_slug,
+            _unique_sources([candidate_det_kernel] + detective_sources),
+        )
+        promote_det_kernel, promote_det_output = _run_stage(
+            args,
+            "promote_detective",
+            promote_det_slug,
+            promote_det_folder,
+            accelerator=args.promotion_accelerator,
+            timeout=args.promotion_timeout,
+        )
+        run_record["stages"]["promote_detective"] = promote_det_kernel
+    else:
+        candidate_det_kernel, candidate_det_output, promote_det_output = _run_detective_branch(
+            args,
+            state,
+            prefix,
+            run_record,
+            detective_sources,
+            start_index=1,
+        )
 
     if args.prepare_only:
         state["runs"].append(run_record)
@@ -1003,6 +1029,11 @@ def build_parser():
     parser.add_argument("--loop", action="store_true", help="Repeat cycles until a promotion fails or interrupted.")
     parser.add_argument("--detective-only", action="store_true", help="Run only detective training and detective promotion.")
     parser.add_argument("--detective-rl-only", action="store_true", help="Skip detective Belief/MCTS logging and SL; run only detective PPO plus promotion.")
+    parser.add_argument(
+        "--detective-promote-source-kernel",
+        default=None,
+        help="Promote an existing detective training kernel without launching another detective training run.",
+    )
     return parser
 
 
