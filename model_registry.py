@@ -49,7 +49,7 @@ def resolve_model_id(model_id, root="."):
 
 
 def _checkpoint_path(path, root="."):
-    checkpoint_path = Path(path)
+    checkpoint_path = Path(str(path).replace("\\", "/"))
     if checkpoint_path.is_absolute():
         return checkpoint_path
     return Path(root) / checkpoint_path

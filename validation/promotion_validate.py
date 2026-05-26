@@ -30,7 +30,7 @@ def _abs(path):
 
 
 def _resolve_registry_path(model_id, root):
-    path = Path(resolve_path(model_id, root=root))
+    path = Path(str(resolve_path(model_id, root=root)).replace("\\", "/"))
     if path.exists():
         return str(path)
     kaggle_input = Path("/kaggle/input")
