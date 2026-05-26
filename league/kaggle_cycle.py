@@ -427,6 +427,10 @@ cmd = [
     '--rollout-turns', {args.detective_mcts_rollout_turns!r},
     '--exploration-c', {args.detective_mcts_exploration_c!r},
     '--temperature', {args.detective_mcts_temperature!r},
+    '--teacher-mode', {args.detective_mcts_teacher_mode!r},
+    '--joint-top-k', {args.detective_joint_top_k!r},
+    '--joint-random-actions', {args.detective_joint_random_actions!r},
+    '--value-leaf-weight', {args.detective_value_leaf_weight!r},
     '--opponent-pool', {args.detective_opponent_pool!r},
     '--primary-mrx-weight', {args.detective_primary_mrx_weight!r},
     '--pool-mrx-weight', {args.detective_pool_mrx_weight!r},
@@ -960,6 +964,90 @@ def run_detective_only(args):
     return state
 
 
+def run_detective_log_only(args):
+    args.owner = args.owner or _kaggle_username()
+    state = _load_state(args.state)
+    run_tag = args.run_tag or datetime.now().strftime("%Y%m%d%H%M%S")
+    prefix = _slugify(f"{args.slug_prefix}-{run_tag}")
+    run_record = {"run_tag": run_tag, "mode": "detective_log_only", "stages": {}}
+
+    detective_sources = [
+        k
+        for k in (state.get("best_mrx_kernel"), state.get("best_detective_kernel"))
+        if k
+    ]
+    log_det_kernels = list(args.detective_log_source_kernels or [])
+    if log_det_kernels:
+        for idx, kernel in enumerate(log_det_kernels, start=1):
+            stage_key = "log_detective" if len(log_det_kernels) == 1 else f"log_detective_{idx:02d}"
+            run_record["stages"][stage_key] = kernel
+    else:
+        shard_games = _split_games(args.detective_log_games, args.detective_log_shards)
+        log_det_stages = []
+        for shard_idx, games in enumerate(shard_games, start=1):
+            if games <= 0:
+                continue
+            shard_suffix = f"-{shard_idx:02d}" if len(shard_games) > 1 else ""
+            log_det_slug = _slugify(f"{prefix}-01-log-det{shard_suffix}")
+            log_det_folder = prepare_log_detective_kernel(
+                args,
+                args.owner,
+                log_det_slug,
+                detective_sources,
+                games=games,
+                seed_base=args.detective_seed_base + (shard_idx - 1) * 100000,
+                stage_folder=f"01_log_detective{shard_suffix.replace('-', '_')}",
+            )
+            log_det_stages.append(
+                {
+                    "stage_name": f"log_detective{shard_suffix}",
+                    "slug": log_det_slug,
+                    "kernel": f"{args.owner}/{log_det_slug}",
+                    "folder": log_det_folder,
+                    "accelerator": args.detective_log_accelerator,
+                    "timeout": args.detective_log_timeout,
+                    "shard_idx": shard_idx,
+                }
+            )
+        if args.detective_log_parallel and len(log_det_stages) > 1:
+            completed = _run_stages_parallel(
+                args,
+                log_det_stages,
+                parallel_limit=args.detective_log_parallel_limit,
+            )
+            completed_kernels = {kernel for kernel, _ in completed}
+            for stage in log_det_stages:
+                log_det_kernel = stage["kernel"]
+                if log_det_kernel not in completed_kernels:
+                    raise RuntimeError(f"Missing completed detective log shard: {log_det_kernel}")
+                stage_key = f"log_detective_{stage['shard_idx']:02d}"
+                run_record["stages"][stage_key] = log_det_kernel
+                log_det_kernels.append(log_det_kernel)
+        else:
+            for stage in log_det_stages:
+                log_det_kernel, _ = _run_stage(
+                    args,
+                    stage["stage_name"],
+                    stage["slug"],
+                    stage["folder"],
+                    accelerator=stage["accelerator"],
+                    timeout=stage["timeout"],
+                )
+                stage_key = (
+                    "log_detective"
+                    if len(log_det_stages) == 1
+                    else f"log_detective_{stage['shard_idx']:02d}"
+                )
+                run_record["stages"][stage_key] = log_det_kernel
+                log_det_kernels.append(log_det_kernel)
+        if not log_det_kernels:
+            raise ValueError("--detective-log-games must be greater than 0")
+
+    state["runs"].append(run_record)
+    _save_state(args.state, state)
+    return state
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="Run the Kaggle CPU/GPU league cycle from the local machine."
@@ -1013,6 +1101,10 @@ def build_parser():
     parser.add_argument("--detective-mcts-rollout-turns", type=int, default=2)
     parser.add_argument("--detective-mcts-exploration-c", type=float, default=1.35)
     parser.add_argument("--detective-mcts-temperature", type=float, default=1.0)
+    parser.add_argument("--detective-mcts-teacher-mode", choices=("sequential", "joint"), default="joint")
+    parser.add_argument("--detective-joint-top-k", type=int, default=3)
+    parser.add_argument("--detective-joint-random-actions", type=int, default=1)
+    parser.add_argument("--detective-value-leaf-weight", type=float, default=0.0)
     parser.add_argument("--detective-sl-epochs", type=int, default=8)
     parser.add_argument("--detective-sl-batch-size", type=int, default=128)
     parser.add_argument("--use-detective-sl-parent", action="store_true")
@@ -1029,6 +1121,7 @@ def build_parser():
     parser.add_argument("--once", action="store_true", help="Run one full league cycle.")
     parser.add_argument("--loop", action="store_true", help="Repeat cycles until a promotion fails or interrupted.")
     parser.add_argument("--detective-only", action="store_true", help="Run only detective training and detective promotion.")
+    parser.add_argument("--detective-log-only", action="store_true", help="Run only detective Belief/MCTS logging shards.")
     parser.add_argument("--detective-rl-only", action="store_true", help="Skip detective Belief/MCTS logging and SL; run only detective PPO plus promotion.")
     parser.add_argument(
         "--detective-promote-source-kernel",
@@ -1060,10 +1153,18 @@ def _normalise_args(args):
 
 def main():
     args = _normalise_args(build_parser().parse_args())
-    if not args.once and not args.loop and not args.prepare_only and not args.detective_only:
-        raise SystemExit("Pass --once, --loop, --detective-only, or --prepare-only.")
+    if (
+        not args.once
+        and not args.loop
+        and not args.prepare_only
+        and not args.detective_only
+        and not args.detective_log_only
+    ):
+        raise SystemExit("Pass --once, --loop, --detective-only, --detective-log-only, or --prepare-only.")
     while True:
-        if args.detective_only:
+        if args.detective_log_only:
+            run_detective_log_only(args)
+        elif args.detective_only:
             run_detective_only(args)
         else:
             run_once(args)

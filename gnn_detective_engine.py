@@ -244,6 +244,12 @@ class GNNDetectiveEngine:
 
         ckpt = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
         cfg = ckpt.get("config", {})
+        self.return_mean = float(
+            cfg.get("return_mean", ckpt.get("rtg_mean", ckpt.get("return_mean", 0.0))) or 0.0
+        )
+        self.return_std = float(
+            cfg.get("return_std", ckpt.get("rtg_std", ckpt.get("return_std", 1.0))) or 1.0
+        )
         self.model = DetectiveRGNN(
             node_dyn_dim=cfg.get("node_dyn_dim", NODE_DYN_DIM),
             node_static_dim=cfg.get("node_static_dim", int(self.node_static.shape[1])),
@@ -365,17 +371,57 @@ class GNNDetectiveEngine:
             .to(self.device),
         }
 
+    def denormalize_value(self, value):
+        return float(value) * max(float(self.return_std), 1e-6) + float(self.return_mean)
+
     @torch.no_grad()
-    def choose_destination(self, game, belief_state, detective_id):
+    def evaluate(self, game, belief_state, detective_id):
         sample = self.build_input(game, belief_state, detective_id)
-        _, all_logits, all_cand = self.model(
+        value, all_logits, all_cand = self.model(
             self._collate_one(sample), self.dense_adj, self.node_static
         )
-        cand = all_cand[0]
-        if not cand:
+        value_norm = float(value[0].item())
+        logits_t = all_logits[0]
+        cand = [int(u) for u in all_cand[0]]
+        if len(cand):
+            logits = logits_t.detach().cpu().numpy().astype(np.float64)
+            scaled = logits - float(np.max(logits))
+            probs = np.exp(scaled)
+            probs_sum = float(probs.sum())
+            if probs_sum > 0:
+                probs /= probs_sum
+            else:
+                probs[:] = 1.0 / len(probs)
+            policy = [
+                {
+                    "destination": str(int(node) + 1),
+                    "target_action": int(node),
+                    "logit": float(logit),
+                    "prob": float(prob),
+                }
+                for node, logit, prob in zip(cand, logits, probs)
+            ]
+        else:
+            policy = []
+        return {
+            "sample": sample,
+            "value_norm": value_norm,
+            "value_raw": self.denormalize_value(value_norm),
+            "policy": policy,
+        }
+
+    @torch.no_grad()
+    def evaluate_value(self, game, belief_state, detective_id=0):
+        return self.evaluate(game, belief_state, detective_id)
+
+    @torch.no_grad()
+    def choose_destination(self, game, belief_state, detective_id):
+        evaluated = self.evaluate(game, belief_state, detective_id)
+        policy = evaluated["policy"]
+        if not policy:
             return None
-        best_idx = int(torch.argmax(all_logits[0]).item())
-        return str(int(cand[best_idx]) + 1)
+        best = max(policy, key=lambda row: row["logit"])
+        return best["destination"]
 
     def play_detective_turn(self, game, belief_state, detective_id):
         destination = self.choose_destination(game, belief_state, detective_id)

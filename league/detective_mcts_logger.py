@@ -21,6 +21,8 @@ from league.common import best_model, ensure_project_root, now_tag, seed_everyth
 from league.detective_belief_mcts import (
     BeliefMCTSConfig,
     BeliefMCTSDetectiveTeacher,
+    _apply_detective_move,
+    _legal_destinations,
 )
 from league.train_detective_rl_vs_latest_mrx import (
     _opponent_mix_summary,
@@ -108,6 +110,57 @@ def _policy_entropy(search_info):
     return entropy
 
 
+def _rankdata(values):
+    values = np.asarray(values, dtype=np.float64)
+    order = np.argsort(values, kind="mergesort")
+    ranks = np.empty(len(values), dtype=np.float64)
+    ranks[order] = np.arange(len(values), dtype=np.float64)
+    return ranks
+
+
+def _corr(x, y):
+    x = np.asarray(x, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    mask = np.isfinite(x) & np.isfinite(y)
+    x = x[mask]
+    y = y[mask]
+    if len(x) < 2 or float(np.std(x)) <= 1e-12 or float(np.std(y)) <= 1e-12:
+        return None
+    return float(np.corrcoef(x, y)[0, 1])
+
+
+def _value_diagnostics(samples_df):
+    if samples_df.empty or "return_to_go" not in samples_df:
+        return {}
+    returns = pd.to_numeric(samples_df["return_to_go"], errors="coerce").to_numpy()
+    diagnostics = {}
+    for col in (
+        "value_before_raw",
+        "value_after_joint_raw",
+        "root_value",
+        "selected_q",
+        "joint_root_value",
+        "joint_selected_q",
+    ):
+        if col not in samples_df:
+            continue
+        values = pd.to_numeric(samples_df[col], errors="coerce").to_numpy()
+        mask = np.isfinite(values) & np.isfinite(returns)
+        if int(mask.sum()) < 2:
+            continue
+        entry = {
+            "n": int(mask.sum()),
+            "pearson_vs_return": _corr(values[mask], returns[mask]),
+            "spearman_vs_return": _corr(_rankdata(values[mask]), _rankdata(returns[mask])),
+            "mean": float(np.mean(values[mask])),
+            "std": float(np.std(values[mask])),
+        }
+        if col.startswith("value_"):
+            entry["mae_vs_return"] = float(np.mean(np.abs(values[mask] - returns[mask])))
+        diagnostics[col] = entry
+    return diagnostics
+
+
 def _is_reveal_turn(turn):
     return (int(turn) - 3) % 5 == 0
 
@@ -180,6 +233,10 @@ def _make_teacher(args, detective_checkpoint, mrx_policy, seed):
         exploration_c=args.exploration_c,
         policy_temperature=args.temperature,
         seed=seed,
+        teacher_mode=args.teacher_mode,
+        joint_top_k=args.joint_top_k,
+        joint_random_actions=args.joint_random_actions,
+        value_leaf_weight=args.value_leaf_weight,
     )
     return BeliefMCTSDetectiveTeacher(
         detective_checkpoint=detective_checkpoint,
@@ -205,21 +262,51 @@ def run_logged_game(game_id, seed, args, writer, detective_checkpoint, mrx_plan,
             break
 
         captured = False
+        phase_record_indices = []
+        joint_info = None
+        selected_joint = None
+        if args.teacher_mode == "joint":
+            selected_joint, joint_info = teacher.search_joint(game, engine)
+
         for detective_id in range(game.num_detectives):
-            sample = teacher.default_policy.build_input(
+            evaluated = teacher.default_policy.evaluate(
                 game,
                 engine.belief_state,
                 detective_id,
             )
+            sample = evaluated["sample"]
             if not sample["legal_neighbors_mask"].any():
                 blocked += 1
                 continue
 
-            result, search_info = teacher.play_detective_turn(game, engine, detective_id)
-            if result is None:
-                blocked += 1
-                continue
-            destination, vehicle = result
+            if args.teacher_mode == "joint":
+                legal_destinations = _legal_destinations(game, detective_id)
+                destination = (
+                    selected_joint[detective_id]
+                    if selected_joint is not None and detective_id < len(selected_joint)
+                    else None
+                )
+                search_info = teacher.decision_info_from_joint(
+                    joint_info,
+                    detective_id,
+                    legal_destinations,
+                )
+                selected = search_info.get("selected") or {}
+                if destination is None or str(destination) not in set(legal_destinations):
+                    destination = selected.get("destination")
+                if destination is None or str(destination) not in set(legal_destinations):
+                    blocked += 1
+                    continue
+                destination = str(destination)
+                vehicle = _apply_detective_move(game, detective_id, destination)
+            else:
+                result, search_info = teacher.play_detective_turn(game, engine, detective_id)
+                if result is None:
+                    blocked += 1
+                    continue
+                destination, vehicle = result
+                selected = search_info.get("selected") or {}
+
             target = int(destination) - 1
             if target < 0 or not sample["legal_neighbors_mask"][target]:
                 raise AssertionError(
@@ -236,7 +323,6 @@ def run_logged_game(game_id, seed, args, writer, detective_checkpoint, mrx_plan,
                 done = True
                 captured = True
 
-            selected = search_info.get("selected") or {}
             target_policy = _target_policy_dense(search_info, target)
             visit_policy = [
                 {"node": int(i), "prob": float(p)}
@@ -248,6 +334,7 @@ def run_logged_game(game_id, seed, args, writer, detective_checkpoint, mrx_plan,
                 "decision_id": int(decisions),
                 "turn": int(game.turn),
                 "detective_id": int(detective_id),
+                "teacher_mode": args.teacher_mode,
                 "mrx_pos_hidden": str(game.mrx_pos),
                 "detectives_pos": _dumps(game.detectives_pos),
                 "belief_entropy": float(
@@ -266,6 +353,11 @@ def run_logged_game(game_id, seed, args, writer, detective_checkpoint, mrx_plan,
                 "root_actions": int(len(search_info.get("actions") or [])),
                 "root_value": float(search_info.get("root_value", 0.0)),
                 "selected_q": float(selected.get("q_value", 0.0)),
+                "joint_root_value": float(search_info.get("joint_root_value", np.nan)),
+                "joint_selected_q": float(search_info.get("joint_selected_q", np.nan)),
+                "joint_action_count": int(search_info.get("joint_action_count", 0)),
+                "value_before_norm": float(evaluated["value_norm"]),
+                "value_before_raw": float(evaluated["value_raw"]),
                 "reward": float(reward),
                 "done": bool(done),
                 "min_dist_after_detective": int(
@@ -275,6 +367,7 @@ def run_logged_game(game_id, seed, args, writer, detective_checkpoint, mrx_plan,
                 "mrx_opponent_strategy": mrx_plan["strategy"],
             }
             writer.append(record, sample, target_policy)
+            phase_record_indices.append(len(writer.records) - 1)
             rewards.append(float(reward))
             decisions += 1
 
@@ -283,6 +376,22 @@ def run_logged_game(game_id, seed, args, writer, detective_checkpoint, mrx_plan,
             engine.kalman_filter()
 
         game.detectives_moves.append(game.detectives_pos[:])
+        if phase_record_indices:
+            if captured:
+                value_after = {"value_norm": np.nan, "value_raw": R_CAPTURE}
+            else:
+                value_after = teacher.default_policy.evaluate_value(
+                    game,
+                    engine.belief_state,
+                    detective_id=0,
+                )
+            for record_idx in phase_record_indices:
+                writer.records[record_idx]["value_after_joint_norm"] = float(
+                    value_after["value_norm"]
+                )
+                writer.records[record_idx]["value_after_joint_raw"] = float(
+                    value_after["value_raw"]
+                )
         if captured:
             break
 
@@ -387,6 +496,7 @@ def run(args):
         ),
         "opponent_counts": {str(k): int(v) for k, v in opponent_counts.items()},
     }
+    value_diagnostics = _value_diagnostics(samples_df)
     manifest = {
         "schema_version": 1,
         "run_tag": run_tag,
@@ -401,10 +511,13 @@ def run(args):
         "parts": writer.parts,
         "game_stats": os.fspath(stats_path),
         "sanity": sanity,
+        "value_diagnostics": value_diagnostics,
         "elapsed_seconds": time.time() - started,
     }
     write_json(out_dir / "manifest.json", manifest)
     print(json.dumps(sanity, indent=2))
+    if value_diagnostics:
+        print("Value diagnostics:", json.dumps(value_diagnostics, indent=2))
     print("Manifest:", out_dir / "manifest.json")
     return manifest
 
@@ -416,6 +529,20 @@ def build_parser():
     parser.add_argument("--rollout-turns", type=int, default=3)
     parser.add_argument("--exploration-c", type=float, default=1.35)
     parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument(
+        "--teacher-mode",
+        choices=("sequential", "joint"),
+        default="joint",
+        help="Use independent per-detective search or one synchronized joint-action search.",
+    )
+    parser.add_argument("--joint-top-k", type=int, default=3)
+    parser.add_argument("--joint-random-actions", type=int, default=1)
+    parser.add_argument(
+        "--value-leaf-weight",
+        type=float,
+        default=0.0,
+        help="Optional raw value bootstrap weight inside the teacher search; 0 logs diagnostics only.",
+    )
     parser.add_argument("--mrx-checkpoint", default=None)
     parser.add_argument("--mrx-opponent-id", default=None)
     parser.add_argument("--detective-checkpoint", default=None)
