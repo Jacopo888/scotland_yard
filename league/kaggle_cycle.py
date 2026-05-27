@@ -378,6 +378,15 @@ cmd = [
     sys.executable, 'league/train_detective_rl_vs_latest_mrx.py',
     '--updates', {args.detective_updates!r},
     '--games-per-update', {args.detective_games_per_update!r},
+    '--ppo-epochs', {args.detective_ppo_epochs!r},
+    '--minibatch-size', {args.detective_minibatch_size!r},
+    '--lr', {args.detective_lr!r},
+    '--weight-decay', {args.detective_weight_decay!r},
+    '--clip-eps', {args.detective_clip_eps!r},
+    '--value-coef', {args.detective_value_coef!r},
+    '--entropy-coef', {args.detective_entropy_coef!r},
+    '--grad-clip', {args.detective_grad_clip!r},
+    '--eval-every', {args.detective_eval_every!r},
     '--eval-games', {args.detective_eval_games!r},
     '--opponent-pool', {args.detective_opponent_pool!r},
     '--primary-mrx-weight', {args.detective_primary_mrx_weight!r},
@@ -875,6 +884,8 @@ def run_once(args):
     detective_sources = [train_mrx_kernel]
     if state.get("best_detective_kernel"):
         detective_sources.append(state["best_detective_kernel"])
+    if args.detective_rl_parent_source_kernel:
+        detective_sources.append(args.detective_rl_parent_source_kernel)
     candidate_det_kernel, candidate_det_output, promote_det_output = _run_detective_branch(
         args,
         state,
@@ -912,6 +923,8 @@ def run_detective_only(args):
         for k in (state.get("best_mrx_kernel"), state.get("best_detective_kernel"))
         if k
     ]
+    if args.detective_rl_parent_source_kernel:
+        detective_sources.append(args.detective_rl_parent_source_kernel)
     if args.detective_promote_source_kernel:
         candidate_det_kernel = args.detective_promote_source_kernel
         candidate_det_output = (
@@ -1110,6 +1123,15 @@ def build_parser():
     parser.add_argument("--use-detective-sl-parent", action="store_true")
     parser.add_argument("--detective-updates", type=int, default=60)
     parser.add_argument("--detective-games-per-update", type=int, default=32)
+    parser.add_argument("--detective-ppo-epochs", type=int, default=2)
+    parser.add_argument("--detective-minibatch-size", type=int, default=128)
+    parser.add_argument("--detective-lr", type=float, default=5e-5)
+    parser.add_argument("--detective-weight-decay", type=float, default=1e-5)
+    parser.add_argument("--detective-clip-eps", type=float, default=0.15)
+    parser.add_argument("--detective-value-coef", type=float, default=0.5)
+    parser.add_argument("--detective-entropy-coef", type=float, default=0.005)
+    parser.add_argument("--detective-grad-clip", type=float, default=1.0)
+    parser.add_argument("--detective-eval-every", type=int, default=2)
     parser.add_argument("--detective-eval-games", type=int, default=100)
     parser.add_argument("--detective-opponent-pool", default="detective_training_mrx_pool_v1")
     parser.add_argument("--detective-primary-mrx-weight", type=float, default=0.5)
@@ -1123,6 +1145,11 @@ def build_parser():
     parser.add_argument("--detective-only", action="store_true", help="Run only detective training and detective promotion.")
     parser.add_argument("--detective-log-only", action="store_true", help="Run only detective Belief/MCTS logging shards.")
     parser.add_argument("--detective-rl-only", action="store_true", help="Skip detective Belief/MCTS logging and SL; run only detective PPO plus promotion.")
+    parser.add_argument(
+        "--detective-rl-parent-source-kernel",
+        default=None,
+        help="Extra Kaggle kernel source containing a detective SL/RL parent checkpoint for PPO.",
+    )
     parser.add_argument(
         "--detective-promote-source-kernel",
         default=None,
