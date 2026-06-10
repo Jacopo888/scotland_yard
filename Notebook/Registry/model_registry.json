@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "updated_at": "2026-05-26",
+  "updated_at": "2026-06-10",
   "notes": [
     "Registry is the source of truth for model identity, lineage, status, evaluation files, and opponent pools.",
     "Promoted checkpoint files live in Notebook/Models/<side>/<model_id>.pt; do not overwrite old promoted versions.",
@@ -396,7 +396,7 @@
       "id": "detective_ppo_v004",
       "side": "detectives",
       "kind": "ppo",
-      "status": "best",
+      "status": "historical",
       "path": "Notebook\\Models\\detectives\\detective_ppo_v004.pt",
       "parent": "detective_ppo_v003",
       "trained_against": [
@@ -476,6 +476,52 @@
       },
       "promoted_at": "2026-05-26",
       "promotion_source_checkpoint": "kaggle_outputs\\jacopodabundo__sy-league-20260525211310-01-train-det\\detective_rl_checkpoints\\detective_rl_20260525_191350\\detective_ppo_v004.pt"
+    },
+    {
+      "id": "detective_sl_v001",
+      "side": "detectives",
+      "kind": "sl",
+      "status": "best",
+      "path": "Notebook\\Models\\detectives\\detective_sl_v001.pt",
+      "parent": "detective_ppo_v004",
+      "trained_against": [
+        "belief_mcts_teacher"
+      ],
+      "eval_files": [
+        "kaggle_outputs\\jacopodabundo__sy-league-20260610225237-01-promote-det\\promotion_detective\\promotion_result.json"
+      ],
+      "metrics": {
+        "val_loss": 0.9860049416698139,
+        "val_acc": 0.7584083119108826,
+        "val_top3_acc": 0.9592437874892887,
+        "n_samples": 186721,
+        "elapsed_seconds": 3818.8616771698,
+        "promotion_result": true,
+        "improvement_pp": 1.766666666666672,
+        "candidate_mean_score": 0.8196388888888889,
+        "baseline_mean_score": 0.8019722222222222,
+        "candidate_illegal_actions_reported": 0,
+        "vs_random_detective_winrate": 1.0,
+        "vs_random_baseline_detective_winrate": 1.0,
+        "vs_random_delta_pp": 0.0,
+        "vs_mcts_15_25_detective_winrate": 0.96,
+        "vs_mcts_15_25_baseline_detective_winrate": 0.9566666666666667,
+        "vs_mcts_15_25_delta_pp": 0.33333333333332993,
+        "vs_mcts_30_50_detective_winrate": 0.925,
+        "vs_mcts_30_50_baseline_detective_winrate": 0.85,
+        "vs_mcts_30_50_delta_pp": 7.500000000000007,
+        "vs_mrx_best_detective_winrate": 0.67375,
+        "vs_mrx_best_baseline_detective_winrate": 0.65125,
+        "vs_mrx_best_delta_pp": 2.2499999999999964,
+        "vs_mrx_bc_v001_detective_winrate": 0.8533333333333334,
+        "vs_mrx_bc_v001_baseline_detective_winrate": 0.8766666666666667,
+        "vs_mrx_bc_v001_delta_pp": -2.3333333333333317,
+        "vs_mrx_ppo_v001_detective_winrate": 0.832,
+        "vs_mrx_ppo_v001_baseline_detective_winrate": 0.826,
+        "vs_mrx_ppo_v001_delta_pp": 0.6000000000000005
+      },
+      "promoted_at": "2026-06-10",
+      "promotion_source_checkpoint": "kaggle_outputs\\jacopodabundo__sy-league-20260610183124-02-train-det-sl\\detective_sl_checkpoints\\detective_sl_20260610_163147\\detective_sl_v001.pt"
     }
   ],
   "virtual_baselines": [
