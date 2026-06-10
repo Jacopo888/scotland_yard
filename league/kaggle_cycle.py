@@ -118,6 +118,7 @@ def _base_bootstrap(repo_url, repo_ref):
     return f"""
 import glob
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -127,6 +128,13 @@ repo = Path('/tmp/scotland_yard')
 if not repo.exists():
     subprocess.run({clone_cmd}, check=True)
 {checkout}os.chdir(repo)
+
+def version_key(path):
+    # Sort versioned checkpoints numerically (v010 > v009 > v002); plain
+    # lexicographic sort ranks by stem/path and e.g. puts *_sl_* above *_ppo_*.
+    name = os.path.basename(path)
+    match = re.search(r'_v(\\d+)', name)
+    return (int(match.group(1)) if match else -1, name, path)
 
 def newest(patterns, exclude=()):
     paths = []
@@ -138,7 +146,7 @@ def newest(patterns, exclude=()):
         if any(token in name for token in exclude):
             continue
         out.append(path)
-    return sorted(set(out))[-1] if out else None
+    return sorted(set(out), key=version_key)[-1] if out else None
 """
 
 
@@ -303,7 +311,7 @@ subprocess.run(cmd, check=True)
     return folder
 
 
-def prepare_promote_mrx_kernel(args, owner, slug, kernel_sources):
+def prepare_promote_mrx_kernel(args, owner, slug, kernel_sources, candidate_kernel=None):
     folder = _kernel_folder(args.work_dir, "03_promote_mrx")
     metadata = _metadata(
         owner=owner,
@@ -314,27 +322,39 @@ def prepare_promote_mrx_kernel(args, owner, slug, kernel_sources):
         enable_gpu=bool(args.promotion_accelerator),
     )
     device = "cuda" if args.promotion_accelerator else "cpu"
+    candidate_slug = (candidate_kernel or "").split("/")[-1]
     max_games_line = (
         f"cmd += ['--max-games-per-suite', {args.promotion_max_games!r}]\n"
         if args.promotion_max_games is not None
         else ""
     )
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
-mrx_checkpoints = []
-for pattern in ['/kaggle/input/**/mrx_sl_*.pt', '/kaggle/input/**/mrx_ppo_*.pt']:
-    mrx_checkpoints.extend(glob.glob(pattern, recursive=True))
-mrx_checkpoints = sorted(
-    set(path for path in mrx_checkpoints if 'last' not in os.path.basename(path)),
-    key=lambda path: (Path(path).stem, path),
-)
+# The candidate must come from the training kernel that produced it; other
+# kernel sources may contain older or never-promoted checkpoints.
+candidate_slug = {candidate_slug!r}
+candidate_patterns = ['mrx_sl_*.pt', 'mrx_ppo_*.pt']
+
+def collect(patterns, scope):
+    paths = []
+    for pattern in patterns:
+        paths.extend(glob.glob(f'/kaggle/input/**/{{scope}}{{pattern}}', recursive=True))
+    return sorted(
+        set(path for path in paths if 'last' not in os.path.basename(path)),
+        key=version_key,
+    )
+
+mrx_checkpoints = collect(candidate_patterns, f'{{candidate_slug}}/**/') if candidate_slug else []
+if not mrx_checkpoints:
+    mrx_checkpoints = collect(candidate_patterns, '')
 candidate = mrx_checkpoints[-1] if mrx_checkpoints else None
-baseline_candidates = [path for path in mrx_checkpoints if path != candidate]
-baseline = baseline_candidates[-1] if baseline_candidates else None
 if not candidate:
     raise SystemExit('Missing Mr.X candidate checkpoint in kernel sources')
 candidate_id = Path(candidate).stem
 out_dir = Path('/kaggle/working/promotion_mrx')
 out_dir.mkdir(parents=True, exist_ok=True)
+# No --baseline-checkpoint: promotion_validate resolves current_best from the
+# registry of the freshly cloned repo, so the gate always compares against the
+# real promoted best instead of whatever checkpoint happens to be in the inputs.
 cmd = [
     sys.executable, 'validation/promotion_validate.py',
     '--side', 'mrx',
@@ -345,8 +365,6 @@ cmd = [
     '--quiet',
     '--output', str(out_dir / 'promotion_result.json'),
 ]
-if baseline:
-    cmd += ['--baseline-checkpoint', baseline]
 {max_games_line}cmd = [str(x) for x in cmd]
 print('Running:', ' '.join(cmd))
 subprocess.run(cmd, check=True)
@@ -494,7 +512,7 @@ subprocess.run(cmd, check=True)
     return folder
 
 
-def prepare_promote_detective_kernel(args, owner, slug, kernel_sources):
+def prepare_promote_detective_kernel(args, owner, slug, kernel_sources, candidate_kernel=None):
     folder = _kernel_folder(args.work_dir, "07_promote_detective")
     metadata = _metadata(
         owner=owner,
@@ -505,24 +523,35 @@ def prepare_promote_detective_kernel(args, owner, slug, kernel_sources):
         enable_gpu=bool(args.promotion_accelerator),
     )
     device = "cuda" if args.promotion_accelerator else "cpu"
+    candidate_slug = (candidate_kernel or "").split("/")[-1]
     max_games_line = (
         f"cmd += ['--max-games-per-suite', {args.promotion_max_games!r}]\n"
         if args.promotion_max_games is not None
         else ""
     )
     source = _base_bootstrap(args.repo_url, args.repo_ref) + f"""
-detective_checkpoints = []
-for pattern in ['/kaggle/input/**/detective_ppo_*.pt', '/kaggle/input/**/detective_sl_*.pt']:
-    detective_checkpoints.extend(glob.glob(pattern, recursive=True))
-detective_checkpoints = sorted(
-    set(path for path in detective_checkpoints if 'last' not in os.path.basename(path)),
-    key=lambda path: (Path(path).stem, path),
-)
+# The candidate must come from the training kernel that produced it; other
+# kernel sources may contain older or never-promoted checkpoints.
+candidate_slug = {candidate_slug!r}
+candidate_patterns = ['detective_ppo_*.pt', 'detective_sl_*.pt']
+
+def collect(patterns, scope, exclude_last=True):
+    paths = []
+    for pattern in patterns:
+        paths.extend(glob.glob(f'/kaggle/input/**/{{scope}}{{pattern}}', recursive=True))
+    if exclude_last:
+        paths = [path for path in paths if 'last' not in os.path.basename(path)]
+    return sorted(set(paths), key=version_key)
+
+scope = f'{{candidate_slug}}/**/' if candidate_slug else ''
+detective_checkpoints = collect(candidate_patterns, scope)
+if not detective_checkpoints and candidate_slug:
+    detective_checkpoints = collect(candidate_patterns, '')
 candidate = detective_checkpoints[-1] if detective_checkpoints else None
 if not candidate:
-    candidate = newest(['/kaggle/input/**/detective_ppo_*_last.pt', '/kaggle/input/**/detective_sl_*_last.pt'])
-baseline_candidates = [path for path in detective_checkpoints if path != candidate]
-baseline = baseline_candidates[-1] if baseline_candidates else None
+    last_patterns = ['detective_ppo_*_last.pt', 'detective_sl_*_last.pt']
+    fallback = collect(last_patterns, scope, exclude_last=False) or collect(last_patterns, '', exclude_last=False)
+    candidate = fallback[-1] if fallback else None
 if not candidate:
     raise SystemExit('Missing detective candidate checkpoint in kernel sources')
 candidate_id = Path(candidate).stem
@@ -530,6 +559,9 @@ if candidate_id.endswith('_last'):
     candidate_id = candidate_id[:-5]
 out_dir = Path('/kaggle/working/promotion_detective')
 out_dir.mkdir(parents=True, exist_ok=True)
+# No --baseline-checkpoint: promotion_validate resolves current_best from the
+# registry of the freshly cloned repo, so the gate always compares against the
+# real promoted best instead of whatever checkpoint happens to be in the inputs.
 cmd = [
     sys.executable, 'validation/promotion_validate.py',
     '--side', 'detectives',
@@ -540,8 +572,6 @@ cmd = [
     '--quiet',
     '--output', str(out_dir / 'promotion_result.json'),
 ]
-if baseline and baseline != candidate:
-    cmd += ['--baseline-checkpoint', baseline]
 {max_games_line}cmd = [str(x) for x in cmd]
 print('Running:', ' '.join(cmd))
 subprocess.run(cmd, check=True)
@@ -652,6 +682,7 @@ def _run_detective_branch(args, state, prefix, run_record, base_sources, start_i
             args.owner,
             promote_det_slug,
             promote_det_sources,
+            candidate_kernel=train_det_kernel,
         )
         promote_det_kernel, promote_det_output = _run_stage(
             args,
@@ -788,6 +819,7 @@ def _run_detective_branch(args, state, prefix, run_record, base_sources, start_i
         args.owner,
         promote_det_slug,
         promote_det_sources,
+        candidate_kernel=candidate_det_kernel,
     )
     promote_det_kernel, promote_det_output = _run_stage(
         args,
@@ -851,6 +883,7 @@ def run_once(args):
         args.owner,
         promote_mrx_slug,
         promote_mrx_sources,
+        candidate_kernel=train_mrx_kernel,
     )
     promote_mrx_kernel, promote_mrx_output = _run_stage(
         args,
@@ -936,6 +969,7 @@ def run_detective_only(args):
             args.owner,
             promote_det_slug,
             _unique_sources([candidate_det_kernel] + detective_sources),
+            candidate_kernel=candidate_det_kernel,
         )
         promote_det_kernel, promote_det_output = _run_stage(
             args,
@@ -1141,7 +1175,7 @@ def build_parser():
     parser.add_argument("--promotion-games-scale", type=float, default=1.0)
     parser.add_argument("--promotion-max-games", type=int, default=None)
     parser.add_argument("--once", action="store_true", help="Run one full league cycle.")
-    parser.add_argument("--loop", action="store_true", help="Repeat cycles until a promotion fails or interrupted.")
+    parser.add_argument("--loop", action="store_true", help="Repeat cycles until interrupted (a failed promotion does not stop the loop).")
     parser.add_argument("--detective-only", action="store_true", help="Run only detective training and detective promotion.")
     parser.add_argument("--detective-log-only", action="store_true", help="Run only detective Belief/MCTS logging shards.")
     parser.add_argument("--detective-rl-only", action="store_true", help="Skip detective Belief/MCTS logging and SL; run only detective PPO plus promotion.")

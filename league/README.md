@@ -41,12 +41,19 @@ training code.
 `kaggle_cycle.py` runs separate Kaggle kernels for CPU and GPU stages:
 
 ```text
-CPU  01 logging
+CPU  01 Neural MCTS logging (Mr.X teacher)
 GPU  02 Mr.X SL training
 CPU  03 Mr.X promotion validation
-GPU  04 detective PPO training
-CPU  05 detective promotion validation
+CPU  04 detective Belief/MCTS logging (sharded; --detective-log-parallel)
+GPU  05 detective SL training (joint MCTS teacher)
+GPU  06 detective PPO training (warm-started from SL with --use-detective-sl-parent)
+CPU  07 detective promotion validation
 ```
+
+The promotion kernels pick the candidate from the training kernel that
+produced it and benchmark it against the registry `current_best` of the
+freshly cloned repo: push registry updates (after `promotion_apply`) before
+starting a new cycle, or the gate compares against a stale best.
 
 Example:
 

@@ -188,8 +188,18 @@ def _check_gate(side, pool, suite_rows):
 
     candidate_scores = [row["candidate_score"] for row in suite_rows]
     baseline_scores = [row["baseline_score"] for row in suite_rows]
-    candidate_mean = float(np.mean(candidate_scores)) if candidate_scores else 0.0
-    baseline_mean = float(np.mean(baseline_scores)) if baseline_scores else 0.0
+    # Optional per-suite weights (default 1.0): saturated suites can be
+    # excluded from the mean (weight 0) while still running for their hard
+    # requirements, and suites with headroom can count more.
+    suite_weights = gate.get("suite_weights", {}) or {}
+    weights = np.array(
+        [float(suite_weights.get(row["suite"], 1.0)) for row in suite_rows],
+        dtype=np.float64,
+    )
+    if not suite_rows or weights.sum() <= 0:
+        weights = np.ones(max(len(suite_rows), 1), dtype=np.float64)
+    candidate_mean = float(np.average(candidate_scores, weights=weights)) if candidate_scores else 0.0
+    baseline_mean = float(np.average(baseline_scores, weights=weights)) if baseline_scores else 0.0
     improvement_pp = (candidate_mean - baseline_mean) * 100.0
 
     failed = []
@@ -246,6 +256,9 @@ def _check_gate(side, pool, suite_rows):
         "candidate_mean_score": candidate_mean,
         "baseline_mean_score": baseline_mean,
         "improvement_pp": improvement_pp,
+        "suite_weights_used": {
+            row["suite"]: float(weight) for row, weight in zip(suite_rows, weights)
+        },
         "core_regressions_pp": core_regressions,
         "candidate_illegal_actions_reported": candidate_illegal,
         "candidate_illegal_actions_enforced": illegal_enforced,

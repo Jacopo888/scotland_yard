@@ -88,6 +88,25 @@ def _candidate_id_from_checkpoint(path):
     return stem[:-5] if stem.endswith("_last") else stem
 
 
+def _resolve_rtg_stats(ckpt):
+    # PPO checkpoints store rtg_mean/rtg_std top-level; SL checkpoints store
+    # return_mean/return_std inside config. Accept both so an SL warm start
+    # keeps the value-head normalisation it was trained with.
+    config = ckpt.get("config", {}) if isinstance(ckpt, dict) else {}
+    mean = ckpt.get("rtg_mean", config.get("return_mean"))
+    std = ckpt.get("rtg_std", config.get("return_std"))
+    if mean is None or std is None:
+        print(
+            "WARNING: parent checkpoint has no return normalisation stats "
+            "(rtg_mean/rtg_std or config.return_mean/return_std); "
+            "falling back to mean=0.0, std=1.0."
+        )
+    return (
+        float(mean) if mean is not None else 0.0,
+        float(std) if std is not None else 1.0,
+    )
+
+
 def _registry_mrx_plan(opponent_id, root):
     requested_opponent_id = opponent_id
     opponent_id = resolve_model_id(opponent_id, root=root)
@@ -420,15 +439,43 @@ def ppo_update(policy, optimizer, transitions, args):
     return {key: value / max(steps, 1) for key, value in metrics.items()}
 
 
+def _eval_schedule(opponent_weights, n_games):
+    # Deterministic largest-remainder allocation: every evaluation plays the
+    # same number of games against each opponent, so scores are comparable
+    # across updates instead of rewarding a lucky opponent draw.
+    weights = np.asarray(opponent_weights, dtype=np.float64)
+    raw = weights * n_games
+    counts = np.floor(raw).astype(int)
+    shortfall = n_games - int(counts.sum())
+    for idx in np.argsort(-(raw - counts))[:shortfall]:
+        counts[int(idx)] += 1
+    schedule = []
+    for plan_idx, count in enumerate(counts):
+        schedule.extend([plan_idx] * int(count))
+    return schedule
+
+
 @torch.no_grad()
-def evaluate_argmax(policy, mrx_checkpoint, device, n_games, seed_offset):
+def evaluate_argmax(
+    policy,
+    opponent_plans,
+    opponent_weights,
+    device,
+    n_games,
+    seed_offset,
+    policy_cache,
+):
+    schedule = _eval_schedule(opponent_weights, n_games)
     wins = 0
     turns = []
     ticket_counter = Counter()
-    for game_idx in range(n_games):
+    per_opponent = defaultdict(lambda: {"games": 0, "wins": 0})
+    for game_idx, plan_idx in enumerate(schedule):
+        plan = opponent_plans[plan_idx]
+        mrx_policy = _policy_for_plan(plan, cache=policy_cache, device=device)
         seed_everything(seed_offset + game_idx)
         policy.reset()
-        mrx_policy = GNNMrXEngine(checkpoint_path=mrx_checkpoint, device=device)
+        mrx_policy.reset()
         game = Game()
         engine = DetectiveEngine(game.detectives_pos)
         while True:
@@ -458,14 +505,25 @@ def evaluate_argmax(policy, mrx_checkpoint, device, n_games, seed_offset):
                 break
             policy.observe_mrx_move(game, ticket)
             mrx_policy.observe_mrx_move(game, ticket)
-        wins += int(game.winner == 0)
+        win = int(game.winner == 0)
+        wins += win
         turns.append(int(game.turn))
+        per_opponent[plan["opponent_id"]]["games"] += 1
+        per_opponent[plan["opponent_id"]]["wins"] += win
     return {
-        "n_games": int(n_games),
+        "n_games": int(len(schedule)),
         "detective_wins": int(wins),
-        "detective_winrate": float(wins / max(n_games, 1)),
+        "detective_winrate": float(wins / max(len(schedule), 1)),
         "avg_final_turn": float(np.mean(turns)) if turns else None,
         "ticket_counts": {str(k): int(v) for k, v in ticket_counter.items()},
+        "per_opponent": {
+            opponent_id: {
+                "games": int(stats["games"]),
+                "wins": int(stats["wins"]),
+                "detective_winrate": float(stats["wins"] / max(stats["games"], 1)),
+            }
+            for opponent_id, stats in sorted(per_opponent.items())
+        },
     }
 
 
@@ -490,8 +548,8 @@ def run(args):
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     policy = GNNDetectiveEngine(checkpoint_path=detective_checkpoint, device=device)
     ckpt = torch.load(detective_checkpoint, map_location=device, weights_only=False)
-    rtg_mean = float(ckpt.get("rtg_mean", 0.0))
-    rtg_std = float(ckpt.get("rtg_std", 1.0))
+    rtg_mean, rtg_std = _resolve_rtg_stats(ckpt)
+    print(f"Return normalisation: rtg_mean={rtg_mean:.4f} rtg_std={rtg_std:.4f}")
     optimizer = torch.optim.AdamW(policy.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     opponent_plans, opponent_weights = _training_opponent_plans(
         args,
@@ -511,12 +569,18 @@ def run(args):
     print("Training opponent mix:", json.dumps(opponent_mix, indent=2))
     print("Candidate:", candidate_id)
 
+    # Fixed evaluation seed: every eval (baseline, periodic, final) replays the
+    # same matchups, so "best" selection compares like-for-like instead of
+    # taking the max over noisy, freshly-seeded evaluations.
+    eval_seed = args.seed + 500000
     baseline_eval = evaluate_argmax(
         policy,
-        mrx_checkpoint=mrx_checkpoint,
+        opponent_plans=opponent_plans,
+        opponent_weights=opponent_weights,
         device=device,
         n_games=args.eval_games,
-        seed_offset=args.seed + 500000,
+        seed_offset=eval_seed,
+        policy_cache=opponent_policy_cache,
     )
     best_score = baseline_eval["detective_winrate"]
     best_path = out_dir / f"{candidate_id}.pt"
@@ -563,10 +627,12 @@ def run(args):
         if update % args.eval_every == 0 or update == args.updates:
             eval_result = evaluate_argmax(
                 policy,
-                mrx_checkpoint=mrx_checkpoint,
+                opponent_plans=opponent_plans,
+                opponent_weights=opponent_weights,
                 device=device,
                 n_games=args.eval_games,
-                seed_offset=args.seed + 700000 + update * 1000,
+                seed_offset=eval_seed,
+                policy_cache=opponent_policy_cache,
             )
             row["eval"] = eval_result
             score = eval_result["detective_winrate"]
@@ -587,6 +653,8 @@ def run(args):
                         history,
                         args,
                         opponent_mix,
+                        rtg_mean,
+                        rtg_std,
                     ),
                     best_path,
                 )
@@ -608,10 +676,12 @@ def run(args):
 
     final_eval = evaluate_argmax(
         policy,
-        mrx_checkpoint=mrx_checkpoint,
+        opponent_plans=opponent_plans,
+        opponent_weights=opponent_weights,
         device=device,
         n_games=args.eval_games,
-        seed_offset=args.seed + 900000,
+        seed_offset=eval_seed,
+        policy_cache=opponent_policy_cache,
     )
     last_path = out_dir / f"{candidate_id}_last.pt"
     torch.save(
@@ -629,6 +699,8 @@ def run(args):
             history,
             args,
             opponent_mix,
+            rtg_mean,
+            rtg_std,
         ),
         last_path,
     )
@@ -692,12 +764,14 @@ def _checkpoint_payload(
     history,
     args,
     opponent_mix,
+    rtg_mean,
+    rtg_std,
 ):
     return {
         "model_state_dict": policy.model.state_dict(),
         "config": parent_ckpt.get("config", {}),
-        "rtg_mean": parent_ckpt.get("rtg_mean", 0.0),
-        "rtg_std": parent_ckpt.get("rtg_std", 1.0),
+        "rtg_mean": float(rtg_mean),
+        "rtg_std": float(rtg_std),
         "update": int(update),
         "source_kind": "detective_ppo_league",
         "source_checkpoint": os.fspath(parent_checkpoint),

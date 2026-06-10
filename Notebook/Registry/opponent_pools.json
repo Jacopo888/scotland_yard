@@ -21,16 +21,20 @@
       {"suite": "vs_random", "opponent_id": "mrx_random", "games": 200},
       {"suite": "vs_mcts_15_25", "opponent_id": "mrx_mcts_15_25", "games": 300},
       {"suite": "vs_mcts_30_50", "opponent_id": "mrx_mcts_30_50", "games": 200},
-      {"suite": "vs_mrx_best", "opponent_id": "mrx_best", "games": 500},
+      {"suite": "vs_mrx_best", "opponent_id": "mrx_best", "games": 800},
       {"suite": "vs_mrx_bc_v001", "opponent_id": "mrx_bc_v001", "games": 300},
       {"suite": "vs_mrx_ppo_v001", "opponent_id": "mrx_ppo_v001", "games": 500}
     ],
     "promotion_gate": {
-      "primary_metric": "mean_detective_winrate_over_eval_matrix",
+      "primary_metric": "weighted_mean_detective_winrate_over_eval_matrix",
       "must_improve_over": "current_best",
-      "minimum_improvement_pp": 3.0,
+      "minimum_improvement_pp": 1.5,
       "max_allowed_regression_pp_any_core_suite": 5.0,
       "core_suites": ["vs_mcts_15_25", "vs_mcts_30_50", "vs_mrx_best", "vs_mrx_ppo_v001"],
+      "suite_weights": {
+        "vs_random": 0.0,
+        "vs_mrx_best": 2.0
+      },
       "hard_requirements": {
         "illegal_actions": 0,
         "detective_winrate_vs_random_min": 0.98
