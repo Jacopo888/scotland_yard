@@ -16,6 +16,10 @@ if str(PROJECT_ROOT) not in sys.path:
 from league.promotion_apply import apply_promotion
 
 
+if hasattr(sys.stdout, "reconfigure"):
+    # Never crash on Unicode when echoing Kaggle output to a cp1252 console.
+    sys.stdout.reconfigure(errors="replace")
+
 DEFAULT_GPU_ACCELERATOR = "NvidiaTeslaT4"
 MAX_KAGGLE_SLUG_LENGTH = 50
 TERMINAL_STATUSES = {"complete", "error", "cancel_acknowledged", "cancelled"}
@@ -23,10 +27,17 @@ TERMINAL_STATUSES = {"complete", "error", "cancel_acknowledged", "cancelled"}
 
 def _run(cmd, cwd=None, check=True):
     print("+", " ".join(os.fspath(c) for c in cmd))
+    # Force UTF-8 in child processes: on Windows the Kaggle CLI otherwise
+    # writes kernel logs with the cp1252 codec and dies on Unicode output
+    # (e.g. tqdm progress bars) with "'charmap' codec can't encode".
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")
     result = subprocess.run(
         [os.fspath(c) for c in cmd],
         cwd=cwd,
+        env=env,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
