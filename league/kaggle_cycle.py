@@ -156,13 +156,21 @@ def _write_kernel(folder, metadata, source):
     (folder / code_file).write_text(source, encoding="utf-8")
 
 
-def _push_kernel(folder, accelerator=None, timeout=None):
+def _push_kernel(folder, accelerator=None, timeout=None, attempts=3):
     cmd = ["kaggle", "kernels", "push", "-p", folder]
     if timeout is not None:
         cmd += ["--timeout", str(timeout)]
     if accelerator:
         cmd += ["--accelerator", accelerator]
-    _run(cmd)
+    for attempt in range(1, attempts + 1):
+        try:
+            _run(cmd)
+            return
+        except subprocess.CalledProcessError:
+            if attempt == attempts:
+                raise
+            print(f"Push failed for {folder}; retrying ({attempt + 1}/{attempts})...")
+            time.sleep(10 * attempt)
 
 
 def _status(kernel):
