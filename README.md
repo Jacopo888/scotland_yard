@@ -21,7 +21,7 @@ The project has grown from a playable AI baseline into a small neural self-play 
 
 - **Legacy baseline**: Mr. X MCTS vs belief-state/Kalman detectives remains the default and the main regression baseline
 - **Neural policies**: `gnn_mrx_engine.py` and `gnn_detective_engine.py` load trained relational GNN policy/value checkpoints
-- **Current best models**: tracked in `Notebook/Registry` (`mrx_sl_v003` for Mr. X, `detective_ppo_v004` for detectives)
+- **Current best models**: tracked in `Notebook/Registry` (`mrx_sl_v003` for Mr. X, `detective_ppo_v005` for detectives as of 2026-06-11)
 - **League loop**: `league/` logs teacher games, trains candidates, validates them, and promotes only through registry gates
 - **Next step implemented**: AlphaGo-style GNN + MCTS teachers for Mr. X and detectives, used to generate stronger soft policy targets
 
