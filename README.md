@@ -4,16 +4,15 @@ A Python implementation of the **Scotland Yard** board game, featuring fully aut
 
 By default, the project still runs the original baseline: **Mr. X MCTS** against **belief-state detectives**. The codebase now also includes trained **R-GNN policy/value engines**, model validation, promotion gates, Kaggle league automation, and AlphaGo-style search teachers for both Mr. X and the detectives.
 
-## Game Rules
+## The Game
 
-- **Board**: 199 stations connected by taxi, bus, underground (and water routes for Mr. X)
-- **Players**: 1 Mr. X vs 5 detectives
-- **Turns**: detectives move first, then Mr. X. The game lasts up to 22 turns
-- **Detective tickets**: taxi (10), bus (8), underground (4)
-- **Mr. X tickets**: taxi (4), bus (3), underground (3), water (5)
-- **Visibility**: Mr. X is hidden, but his position is revealed every 5 turns. Detectives only see the ticket type he uses
-- **Detectives win**: by landing on Mr. X's position
-- **Mr. X wins**: by surviving until turn 22
+Scotland Yard is an asymmetric pursuit-evasion game with imperfect information:
+
+- **Board**: the 199-station London map, with taxi, bus, underground and river connections (the river is reserved for Mr. X)
+- **Players**: Mr. X, the hidden evader, against a team of 5 cooperating detectives
+- **Tickets**: every move spends a ticket of the connection's type; tickets spent by the detectives go to Mr. X
+- **Hidden information**: Mr. X's position is secret and revealed only on fixed rounds, while the detectives always see which ticket type he used
+- **Goal**: the detectives win by moving onto Mr. X; Mr. X wins by evading capture until the round limit
 
 ## Current State
 
@@ -56,7 +55,7 @@ The detective engine (`detective_engine.py`) maintains a probability distributio
 
 - **Update With a Markov Chain Model**: after each Mr. X move, the belief state is multiplied by the transition matrix of the vehicle used
 - **Kalman filter**: zeroes out probability at detective positions and renormalizes
-- **Spotting**: when Mr. X is spotted (every 5 turns), the belief becomes 100% at his real position
+- **Spotting**: when Mr. X is revealed, the belief becomes 100% at his real position
 
 Each detective moves toward the station with the highest probability, using a precomputed shortest-path tensor.
 
@@ -86,7 +85,7 @@ The belief state visualizer (`belief_state_visualizer.py`) opens a second Tkinte
 - **Heatmap**: each of the 199 stations is drawn as a circle whose color and size reflect the current probability of Mr. X being there. The gradient goes from black (probability = 0) to bright red (highest probability).
 - **Labels**: stations with probability above 10% of the maximum show their node number and numeric probability; the rest show only a dimmed node number.
 - **Color bar**: a legend on the right side maps the color gradient to actual probability values (0 -> max P(Mr. X)).
-- **Live updates**: the visualizer refreshes after every detective turn, every Mr. X move, and every spotting event (turns 5, 10, 15, 20), so you can watch the belief state sharpen and spread in real time.
+- **Live updates**: the visualizer refreshes after every detective turn, every Mr. X move, and every reveal, so you can watch the belief state sharpen and spread in real time.
 
 ## Visual Mode
 
@@ -107,6 +106,8 @@ I used Claude to help implement the visual components (board visualizer and beli
 
 ```
 scotland_yard/
+├── DESIGN.md                   # Design notes for the GNN/league system
+├── NEURAL_MCTS_DESIGN.md       # Design of the AlphaGo-style Mr. X search
 ├── main.py                     # Entry point — runs the games
 ├── game.py                     # Game state, moves, rules
 ├── detective_engine.py         # Detective AI (belief state + Kalman)
